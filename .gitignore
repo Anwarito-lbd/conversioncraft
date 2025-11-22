@@ -6,7 +6,7 @@ npm-debug.log*
 # Dependency directories
 node_modules/
 
-# Environment variables (This is the CRITICAL part)
+# Environment variables 
 .env
 .env.local
 
