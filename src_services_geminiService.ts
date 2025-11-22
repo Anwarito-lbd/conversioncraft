@@ -1,28 +1,37 @@
-// Stubbed service: replace with your production Gemini integration.
-// For now it simulates an async analysis response.
+// src/services/geminiService.ts
+
+// If you deploy to the web later, change this URL to your live backend URL.
+const API_URL = "http://localhost:3000/api/analyze";
 
 export async function analyzeCompetitor(url: string) {
   if (!url || !url.startsWith("http")) {
     throw new Error("Please provide a valid URL starting with http(s)://");
   }
 
-  // Simulate network / LLM latency
-  await new Promise((r) => setTimeout(r, 900));
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url }),
+    });
 
-  // Return a mocked intelligence brief — replace with real Gemini call
-  return {
-    url,
-    title: "Example Store — Mock Intelligence",
-    riskScore: 68,
-    insights: [
-      "Heavy social ad spend on short-form video.",
-      "Focuses on 4 primary hooks: convenience, social proof, scarcity, and pricing.",
-      "Landing page uses bold copy + single product funnel pattern."
-    ],
-    plan: [
-      "Launch 3 video creatives focusing on counter-hooks (value + utility).",
-      "Test lookalike audiences from top-engaging posts.",
-      "Introduce scarcity messaging with timed discounts on second week."
-    ]
-  };
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Analysis failed on the server.");
+    }
+
+    return data;
+
+  } catch (error: any) {
+    console.error("Service Error:", error);
+    // Customize this message to help the user debug
+    throw new Error(
+      error.message === "Failed to fetch" 
+      ? "Could not connect to server. Is 'node server.js' running?" 
+      : error.message
+    );
+  }
 }
