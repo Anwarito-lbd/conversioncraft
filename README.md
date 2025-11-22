@@ -105,4 +105,4 @@ Just pure competitor intelligence.
 
 📄 License
 
-MIT © Your Name
+MIT © Anwar Issaoui
