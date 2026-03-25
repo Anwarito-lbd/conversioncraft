@@ -40,10 +40,7 @@ Generated: 2026-03-25 11:41:50 EDT
 | go-task | yes | n/a | already | yes | yes | Task runner |
 | mise | yes | n/a | already | yes | yes | Runtime manager |
 | lefthook | yes | n/a | already | yes | yes | Git hook runner |
-| uv | yes | n/a | already | yes | yes | Python package/runtime tooling |
-| ruff | yes | n/a | already | yes | yes | Lint+format |
-| biome | yes | n/a | already | yes | yes | JS lint+format |
-| nx | yes | n/a | already | yes | yes | Monorepo orchestration |
+| uv | yes | n/a | already | yes | yes || nx | yes | n/a | no | no | yes | Monorepo orchestration; clone blocked (network/auth/repo issue) |
 | supabase-cli | yes | n/a | yes | yes | no | Backend/db ops tooling |
 | stripe-cli | yes | n/a | yes | yes | no | Payments local testing |
 | googleworkspace-cli | yes | n/a | yes | yes | no | Workspace automations |
@@ -66,4 +63,6 @@ Generated: 2026-03-25 11:41:50 EDT
 | Google Labs Pommelly | yes | n/a | no | yes | yes | Product inspiration URL; not clone target. |
 | nas.io | yes | n/a | no | yes | yes | Product reference URL; not clone target. |
 | pagepilot.ai | yes | n/a | no | yes | yes | Product reference URL; not clone target. |
+| Vercel CLI package URL | yes | n/a | no | yes | yes | Package install path, not repo clone request. |
+ne target. |
 | Vercel CLI package URL | yes | n/a | no | yes | yes | Package install path, not repo clone request. |
