@@ -1,0 +1,7 @@
+{
+  "name": "ConversionCraft",
+  "description": "The ultimate AI-powered e-commerce growth platform. Analyze competitors, find winning products, and generate high-converting assets.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

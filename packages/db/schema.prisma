@@ -1,0 +1,176 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Users & Organizations ──────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orgMemberships OrgMember[]
+  oauthTokens    OAuthToken[]
+  campaigns      Campaign[]
+  experiments    Experiment[]
+  attributions   AttributionEvent[]
+  onboarding     OnboardingState?
+  studioState    StudioState?
+  auditLogs      AuditLog[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members              OrgMember[]
+  alertRoutes          AlertRoute[]
+  analyticsPreferences AnalyticsPreferences?
+}
+
+model OrgMember {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String
+  role   String @default("viewer") // owner | admin | marketer | analyst | viewer
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+}
+
+// ─── OAuth & Tokens ─────────────────────────────────────────────
+
+model OAuthToken {
+  id           String   @id @default(cuid())
+  userId       String
+  platform     String   // shopify | meta | tiktok
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  metadata     Json?    // shop URL, ad accounts, etc.
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+}
+
+// ─── Campaigns & Optimization ───────────────────────────────────
+
+model Campaign {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  objective   String
+  dailyBudget Float
+  status      String   @default("draft") // draft | active | paused | completed
+  metrics     Json?    // impressions, clicks, spend, conversions, etc.
+  product     Json?
+  targeting   Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Experimentation ────────────────────────────────────────────
+
+model Experiment {
+  id       String @id @default(cuid())
+  userId   String
+  name     String
+  status   String @default("draft") // draft | running | completed | stopped
+  variants Json   // array of { variant_id, name, weight, metrics }
+  rules    Json?  // targeting rules, traffic allocation
+  orgId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Attribution ────────────────────────────────────────────────
+
+model AttributionEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  eventType String   // purchase | signup | pageview | click
+  revenue   Float    @default(0)
+  spend     Float    @default(0)
+  metadata  Json?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Onboarding & Studio ────────────────────────────────────────
+
+model OnboardingState {
+  id      String @id @default(cuid())
+  userId  String @unique
+  state   Json   // full onboarding state object
+  version Int    @default(1)
+  orgId   String?
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudioState {
+  id      String @id @default(cuid())
+  userId  String @unique
+  state   Json   // brief, productName, cards array
+  version Int    @default(1)
+  orgId   String?
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Audit & Alerts ─────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  userId    String
+  payload   Json?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AlertRoute {
+  id         String   @id @default(cuid())
+  orgId      String
+  channel    String   // email | slack | webhook | inapp
+  target     String
+  severities Json     // ["warning", "critical"]
+  eventTypes Json?    // ["sla", "anomaly"]
+  enabled    Boolean  @default(true)
+  cooldown   Int      @default(30)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsPreferences {
+  id       String @id @default(cuid())
+  orgId    String @unique
+  settings Json   // role_filter, user_filter, sla settings, forecast horizon
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}

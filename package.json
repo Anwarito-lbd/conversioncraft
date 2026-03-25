@@ -1,0 +1,13 @@
+{
+    "name": "conversion-craft-monorepo",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "concurrently \"npm run dev:web\" \"npm run dev:worker\"",
+        "dev:web": "npm run dev --prefix apps/web",
+        "dev:worker": "cd apps/worker && uvicorn main:app --reload --port 8000"
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2"
+    }
+}
