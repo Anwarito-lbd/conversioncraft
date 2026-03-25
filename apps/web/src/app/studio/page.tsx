@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, Clock3, Lightbulb, Rocket, Sparkles, Wand2 } from 'lucide-react';
 import { generateCreativeDraftPhase1 } from '@/services/phase1Service';
 import { getStudioState, upsertStudioState } from '@/services/apiClient';
+import { AuthSessionState, resolveActiveSession } from '@/services/authClient';
+import SessionControls from '@/components/SessionControls';
 
 type Stage = 'concepts' | 'variants' | 'scheduled' | 'posted';
 
@@ -24,9 +27,6 @@ interface StudioState {
   productName: string;
   cards: PipelineCard[];
 }
-
-const USER_ID = 'demo-user-1';
-const ORG_ID = 'demo-org-1';
 
 const defaultState: StudioState = {
   brief: 'Find a high-contrast angle for problem-solution UGC clips with strong urgency CTA.',
@@ -49,16 +49,34 @@ const nextStage = (stage: Stage): Stage => {
 };
 
 export default function StudioPage() {
+  const router = useRouter();
+  const [auth, setAuth] = useState<AuthSessionState | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [state, setState] = useState<StudioState>(defaultState);
   const [stateVersion, setStateVersion] = useState(0);
   const [loading, setLoading] = useState(false);
   const [platform, setPlatform] = useState<'TikTok' | 'Instagram' | 'Facebook'>('TikTok');
   const [persistStatus, setPersistStatus] = useState('Loading pipeline...');
+  const userId = auth?.session.user_id || '';
+  const orgId = auth?.session.org_id || '';
 
   useEffect(() => {
     void (async () => {
+      const session = await resolveActiveSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setAuth(session);
+      setAuthLoading(false);
+    })();
+  }, [router]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void (async () => {
       try {
-        const persisted = await getStudioState({ userId: USER_ID, orgId: ORG_ID });
+        const persisted = await getStudioState({ userId, orgId });
         if (persisted.state && Object.keys(persisted.state).length) {
           setState({ ...defaultState, ...(persisted.state as unknown as StudioState) });
           setStateVersion(Number(persisted.version || 0));
@@ -71,13 +89,14 @@ export default function StudioPage() {
         setPersistStatus('Worker API fetch failed. Start worker on :8000.');
       }
     })();
-  }, []);
+  }, [userId, orgId]);
 
   useEffect(() => {
+    if (!userId) return;
     const timer = window.setTimeout(() => {
       void upsertStudioState({
-        userId: USER_ID,
-        orgId: ORG_ID,
+        userId,
+        orgId,
         expectedVersion: stateVersion,
         state: state as unknown as Record<string, unknown>,
       }).then((res) => {
@@ -85,7 +104,7 @@ export default function StudioPage() {
         setPersistStatus('Board saved to backend.');
       }).catch(async (err) => {
         if (err instanceof Error && err.message.startsWith('Studio version conflict:')) {
-          const latest = await getStudioState({ userId: USER_ID, orgId: ORG_ID });
+          const latest = await getStudioState({ userId, orgId });
           setState({ ...defaultState, ...(latest.state as unknown as StudioState) });
           setStateVersion(Number(latest.version || 0));
           setPersistStatus('A newer studio board existed. Synced latest.');
@@ -95,7 +114,7 @@ export default function StudioPage() {
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [state]);
+  }, [state, userId, orgId, stateVersion]);
 
   const grouped = useMemo(() => {
     const byStage: Record<Stage, PipelineCard[]> = {
@@ -151,6 +170,10 @@ export default function StudioPage() {
     }));
   };
 
+  if (authLoading) {
+    return <main className="min-h-screen bg-[#020612]" />;
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#020612] text-slate-100">
       <div className="pointer-events-none absolute -left-20 top-16 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
@@ -168,9 +191,12 @@ export default function StudioPage() {
                 Manage creative ops as a production board with staged promotion and scheduled posting state.
               </p>
             </div>
-            <div className="flex gap-2">
-              <Link href="/onboarding" className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs">Onboarding</Link>
-              <Link href="/dashboard" className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs">Dashboard</Link>
+            <div className="flex flex-col items-end gap-2">
+              <SessionControls auth={auth} onSessionChanged={setAuth} compact />
+              <div className="flex gap-2">
+                <Link href="/onboarding" className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs">Onboarding</Link>
+                <Link href="/dashboard" className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs">Dashboard</Link>
+              </div>
             </div>
           </div>
         </section>

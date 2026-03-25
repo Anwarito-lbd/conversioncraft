@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Building2, CheckCircle2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, Users2 } from 'lucide-react';
 import { getOnboardingState, getOnboardingStatus, upsertOnboardingState } from '@/services/apiClient';
-
-const USER_ID = 'demo-user-1';
-const ORG_ID = 'demo-org-1';
+import { AuthSessionState, resolveActiveSession } from '@/services/authClient';
+import SessionControls from '@/components/SessionControls';
 
 type StepId = 'company' | 'connections' | 'brand' | 'governance' | 'launch';
 
@@ -54,16 +54,34 @@ const steps: Array<{ id: StepId; title: string; subtitle: string }> = [
 ];
 
 export default function EnterpriseOnboardingPage() {
+  const router = useRouter();
+  const [auth, setAuth] = useState<AuthSessionState | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [state, setState] = useState<OnboardingState>(defaultState);
   const [stateVersion, setStateVersion] = useState(0);
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
   const [persistStatus, setPersistStatus] = useState('Loading saved setup...');
+  const userId = auth?.session.user_id || '';
+  const orgId = auth?.session.org_id || '';
 
   useEffect(() => {
     void (async () => {
+      const session = await resolveActiveSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setAuth(session);
+      setAuthLoading(false);
+    })();
+  }, [router]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void (async () => {
       try {
-        const persisted = await getOnboardingState({ userId: USER_ID, orgId: ORG_ID });
+        const persisted = await getOnboardingState({ userId, orgId });
         if (persisted.state && Object.keys(persisted.state).length) {
           setState({ ...defaultState, ...(persisted.state as unknown as OnboardingState) });
           setStateVersion(Number(persisted.version || 0));
@@ -72,20 +90,21 @@ export default function EnterpriseOnboardingPage() {
           setStateVersion(Number(persisted.version || 0));
           setPersistStatus('No previous setup found. Start onboarding.');
         }
-        const data = await getOnboardingStatus(USER_ID);
+        const data = await getOnboardingStatus(userId);
         setStatus(data as unknown as Record<string, unknown>);
       } catch {
         setStatus(null);
         setPersistStatus('Worker API fetch failed. Start worker on :8000.');
       }
     })();
-  }, []);
+  }, [userId, orgId]);
 
   useEffect(() => {
+    if (!userId) return;
     const timer = window.setTimeout(() => {
       void upsertOnboardingState({
-        userId: USER_ID,
-        orgId: ORG_ID,
+        userId,
+        orgId,
         expectedVersion: stateVersion,
         state: state as unknown as Record<string, unknown>,
       }).then((res) => {
@@ -93,7 +112,7 @@ export default function EnterpriseOnboardingPage() {
         setPersistStatus('Saved to backend.');
       }).catch(async (err) => {
         if (err instanceof Error && err.message.startsWith('Onboarding version conflict:')) {
-          const latest = await getOnboardingState({ userId: USER_ID, orgId: ORG_ID });
+          const latest = await getOnboardingState({ userId, orgId });
           setState({ ...defaultState, ...(latest.state as unknown as OnboardingState) });
           setStateVersion(Number(latest.version || 0));
           setPersistStatus('A newer onboarding draft existed. Synced latest.');
@@ -103,7 +122,7 @@ export default function EnterpriseOnboardingPage() {
       });
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [state]);
+  }, [state, userId, orgId, stateVersion]);
 
   const stepIndex = useMemo(() => steps.findIndex((s) => s.id === state.currentStep), [state.currentStep]);
   const progressPct = useMemo(() => Math.round(((stepIndex + 1) / steps.length) * 100), [stepIndex]);
@@ -124,8 +143,8 @@ export default function EnterpriseOnboardingPage() {
     setSaving(true);
     try {
       const saved = await upsertOnboardingState({
-        userId: USER_ID,
-        orgId: ORG_ID,
+        userId,
+        orgId,
         expectedVersion: stateVersion,
         state: { ...(state as unknown as Record<string, unknown>), completedAt: new Date().toISOString() },
       });
@@ -136,6 +155,10 @@ export default function EnterpriseOnboardingPage() {
     }
     setSaving(false);
   };
+
+  if (authLoading) {
+    return <main className="min-h-screen bg-[#020612]" />;
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#020612] text-slate-100">
@@ -154,9 +177,12 @@ export default function EnterpriseOnboardingPage() {
                 Structured onboarding with persistent progress across team, channels, governance, and launch controls.
               </p>
             </div>
-            <div className="rounded-2xl border border-emerald-300/25 bg-slate-900/70 p-4 text-right">
-              <p className="text-xs uppercase text-slate-400">Progress</p>
-              <p className="text-3xl font-bold text-emerald-300">{progressPct}%</p>
+            <div className="flex flex-col items-end gap-2">
+              <SessionControls auth={auth} onSessionChanged={setAuth} />
+              <div className="rounded-2xl border border-emerald-300/25 bg-slate-900/70 p-4 text-right">
+                <p className="text-xs uppercase text-slate-400">Progress</p>
+                <p className="text-3xl font-bold text-emerald-300">{progressPct}%</p>
+              </div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">

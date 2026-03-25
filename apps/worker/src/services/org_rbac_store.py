@@ -56,6 +56,23 @@ class OrgRbacStore:
     def list_members(self, org_id: str) -> List[Dict[str, Any]]:
         return self.get_org(org_id).get("members", [])
 
+    def list_orgs_for_user(self, user_id: str) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for org in self._read().values():
+            if not isinstance(org, dict):
+                continue
+            for member in org.get("members", []):
+                if str(member.get("user_id", "")) == user_id:
+                    out.append(
+                        {
+                            "org_id": str(org.get("org_id", "")),
+                            "name": str(org.get("name", "")),
+                            "role": str(member.get("role", "viewer")),
+                        }
+                    )
+                    break
+        return out
+
     def upsert_member(self, org_id: str, actor_user_id: str, user_id: str, role: str) -> Dict[str, Any]:
         if role not in ROLE_RANK:
             raise ValueError("Invalid role")

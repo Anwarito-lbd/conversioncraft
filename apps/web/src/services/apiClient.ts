@@ -1,9 +1,19 @@
 import { WorkerAnalyzeResponse } from "@/types";
+import { getAuthToken } from "@/services/authClient";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const apiFetch: typeof fetch = (input, init = {}) => {
+  const token = getAuthToken();
+  const headers = new Headers(init.headers || {});
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers });
+};
+
 export const checkWorkerHealth = async (): Promise<{ status: string }> => {
-  const response = await fetch(`${API_BASE_URL}/health`);
+  const response = await apiFetch(`${API_BASE_URL}/health`);
   if (!response.ok) throw new Error(`Worker health check failed: ${response.statusText}`);
   return await response.json();
 };
@@ -210,7 +220,7 @@ const parseApiError = async (response: Response, fallback: string): Promise<ApiR
 };
 
 export const analyzeNiche = async (niche: string): Promise<WorkerAnalyzeResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ niche }),
@@ -224,7 +234,7 @@ export const generateStoryboard = async (
   productName: string,
   benefits: string[],
 ): Promise<Record<string, unknown>> => {
-  const response = await fetch(`${API_BASE_URL}/api/generate-storyboard`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/generate-storyboard`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ product_name: productName, benefits }),
@@ -235,7 +245,7 @@ export const generateStoryboard = async (
 };
 
 export const generate3DModel = async (imageUrl: string): Promise<string> => {
-  const response = await fetch(`${API_BASE_URL}/api/generate-3d`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/generate-3d`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_url: imageUrl }),
@@ -250,7 +260,7 @@ export const publishCampaign = async (
   productData: Record<string, unknown>,
   userTokens: Record<string, unknown>,
 ): Promise<Record<string, unknown>> => {
-  const response = await fetch(`${API_BASE_URL}/api/publish`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ product_data: productData, user_tokens: userTokens }),
@@ -261,7 +271,7 @@ export const publishCampaign = async (
 };
 
 export const getOnboardingStatus = async (userId: string): Promise<OnboardingStatusResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/onboarding/${userId}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/onboarding/${userId}`);
   if (!response.ok) throw new Error(`Onboarding status failed: ${response.statusText}`);
   return await response.json();
 };
@@ -271,7 +281,7 @@ export const getOnboardingState = async (params: {
   orgId?: string;
 }): Promise<PersistedStateResponse> => {
   const query = params.orgId ? `?org_id=${encodeURIComponent(params.orgId)}` : '';
-  const response = await fetch(`${API_BASE_URL}/api/onboarding/state/${encodeURIComponent(params.userId)}${query}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/onboarding/state/${encodeURIComponent(params.userId)}${query}`);
   if (!response.ok) throw new Error(`Onboarding state fetch failed: ${response.statusText}`);
   return await response.json();
 };
@@ -282,7 +292,7 @@ export const upsertOnboardingState = async (params: {
   expectedVersion?: number;
   state: Record<string, unknown>;
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/onboarding/state/upsert`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/onboarding/state/upsert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -308,7 +318,7 @@ export const getStudioState = async (params: {
   orgId?: string;
 }): Promise<PersistedStateResponse> => {
   const query = params.orgId ? `?org_id=${encodeURIComponent(params.orgId)}` : '';
-  const response = await fetch(`${API_BASE_URL}/api/studio/state/${encodeURIComponent(params.userId)}${query}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/studio/state/${encodeURIComponent(params.userId)}${query}`);
   if (!response.ok) throw new Error(`Studio state fetch failed: ${response.statusText}`);
   return await response.json();
 };
@@ -319,7 +329,7 @@ export const upsertStudioState = async (params: {
   expectedVersion?: number;
   state: Record<string, unknown>;
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/studio/state/upsert`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/studio/state/upsert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -358,7 +368,7 @@ export const getEnterpriseAnalytics = async (params: {
   if (typeof params.slaSyncStaleMinutes === 'number') query.set('sla_sync_stale_minutes', String(params.slaSyncStaleMinutes));
   if (typeof params.slaDlqThreshold15m === 'number') query.set('sla_dlq_threshold_15m', String(params.slaDlqThreshold15m));
   if (typeof params.forecastHorizonDays === 'number') query.set('forecast_horizon_days', String(params.forecastHorizonDays));
-  const response = await fetch(`${API_BASE_URL}/api/analytics/enterprise/${encodeURIComponent(params.orgId)}?${query.toString()}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/analytics/enterprise/${encodeURIComponent(params.orgId)}?${query.toString()}`);
   if (!response.ok) throw new Error(`Enterprise analytics failed: ${response.statusText}`);
   return await response.json();
 };
@@ -367,7 +377,7 @@ export const getAnalyticsPreferences = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<{ org_id: string; settings: AnalyticsPreferences; updated_at?: string; updated_by?: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/analytics/preferences/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
   );
   if (!response.ok) throw new Error(`Analytics preferences fetch failed: ${response.statusText}`);
@@ -379,7 +389,7 @@ export const upsertAnalyticsPreferences = async (params: {
   actorUserId: string;
   settings: AnalyticsPreferences;
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/analytics/preferences/${encodeURIComponent(params.orgId)}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/analytics/preferences/${encodeURIComponent(params.orgId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -395,7 +405,7 @@ export const getAlertRouting = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<{ org_id: string; routes: AlertRoute[]; updated_at?: string; updated_by?: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/alerts/routing/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
   );
   if (!response.ok) throw new Error(`Alert routing fetch failed: ${response.statusText}`);
@@ -407,7 +417,7 @@ export const upsertAlertRouting = async (params: {
   actorUserId: string;
   routes: AlertRoute[];
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/alerts/routing/${encodeURIComponent(params.orgId)}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/alerts/routing/${encodeURIComponent(params.orgId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -423,7 +433,7 @@ export const getEscalationPolicy = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<{ org_id: string; policy: EscalationPolicy; updated_at?: string; updated_by?: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/alerts/escalation/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
   );
   if (!response.ok) throw new Error(`Escalation policy fetch failed: ${response.statusText}`);
@@ -437,7 +447,7 @@ export const upsertEscalationPolicy = async (params: {
   suppressionWindowsJson?: string;
   onCallScheduleJson?: string;
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/alerts/escalation/${encodeURIComponent(params.orgId)}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/alerts/escalation/${encodeURIComponent(params.orgId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -455,7 +465,7 @@ export const getOrgAnomalies = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<{ org_id: string; observations: Array<Record<string, unknown>>; anomalies: Array<Record<string, unknown>>; generated_at: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/analytics/anomalies/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
   );
   if (!response.ok) throw new Error(`Anomaly fetch failed: ${response.statusText}`);
@@ -466,7 +476,7 @@ export const compareOrganizations = async (params: {
   actorUserId: string;
   orgIds: string[];
 }): Promise<{ actor_user_id: string; org_ids: string[]; ranked: Array<Record<string, unknown>>; generated_at: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/analytics/org-compare?actor_user_id=${encodeURIComponent(params.actorUserId)}&org_ids=${encodeURIComponent(params.orgIds.join(','))}`,
   );
   if (!response.ok) throw new Error(`Org comparison failed: ${response.statusText}`);
@@ -492,7 +502,7 @@ export const dispatchAlerts = async (params: {
   delivery_receipts: Array<Record<string, unknown>>;
   receipts_by_channel: Record<string, { sent: number; failed: number }>;
 }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/alerts/dispatch/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
     { method: 'POST' },
   );
@@ -504,7 +514,7 @@ export const getCurrentOnCall = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<{ org_id: string; channel: string; target: string; generated_at: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/alerts/oncall/${encodeURIComponent(params.orgId)}/current?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
   );
   if (!response.ok) throw new Error(`On-call fetch failed: ${response.statusText}`);
@@ -521,7 +531,7 @@ export const listAlertEvents = async (params: {
   query.set('actor_user_id', params.actorUserId);
   if (typeof params.limit === 'number') query.set('limit', String(params.limit));
   if (params.status) query.set('status', params.status);
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/alerts/events/${encodeURIComponent(params.orgId)}?${query.toString()}`,
   );
   if (!response.ok) throw new Error(`Alert events fetch failed: ${response.statusText}`);
@@ -533,7 +543,7 @@ export const ackAlertEvent = async (params: {
   actorUserId: string;
   eventId: string;
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/alerts/events/${encodeURIComponent(params.orgId)}/${encodeURIComponent(params.eventId)}/ack`,
     {
       method: 'POST',
@@ -561,7 +571,7 @@ export const getSlaMetrics = async (params: {
   const query = new URLSearchParams();
   query.set('actor_user_id', params.actorUserId);
   if (typeof params.limit === 'number') query.set('limit', String(params.limit));
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/sla/metrics/${encodeURIComponent(params.orgId)}?${query.toString()}`,
   );
   if (!response.ok) throw new Error(`SLA metrics fetch failed: ${response.statusText}`);
@@ -575,7 +585,7 @@ export const getOpsControls = async (params: {
   const query = new URLSearchParams();
   query.set('actor_user_id', params.actorUserId);
   if (params.orgId) query.set('org_id', params.orgId);
-  const response = await fetch(`${API_BASE_URL}/api/ops/controls?${query.toString()}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/ops/controls?${query.toString()}`);
   if (!response.ok) throw new Error(`Ops controls fetch failed: ${response.statusText}`);
   return await response.json();
 };
@@ -585,7 +595,7 @@ export const upsertOpsControls = async (params: {
   orgId?: string;
   controls: OpsControls;
 }): Promise<{ status: string; row: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/ops/controls`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/ops/controls`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -602,7 +612,7 @@ export const exportOrgState = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<Record<string, unknown>> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/state/export/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
   );
   if (!response.ok) throw new Error(`State export failed: ${response.statusText}`);
@@ -613,7 +623,7 @@ export const backupOrgState = async (params: {
   orgId: string;
   actorUserId: string;
 }): Promise<{ status: string; path: string; checksum_sha256: string }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/state/backup/${encodeURIComponent(params.orgId)}?actor_user_id=${encodeURIComponent(params.actorUserId)}`,
     { method: 'POST' },
   );
@@ -628,7 +638,7 @@ export const startOAuthConnect = async (params: {
   scopes?: string;
   shop?: string;
 }): Promise<OAuthConnectResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/oauth/${params.platform}/connect`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/oauth/${params.platform}/connect`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -650,7 +660,7 @@ export const completeOAuthConnect = async (params: {
   state: string;
   nonce?: string;
 }): Promise<{ connected: boolean }> => {
-  const response = await fetch(`${API_BASE_URL}/api/oauth/${params.platform}/callback`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/oauth/${params.platform}/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -666,7 +676,7 @@ export const completeOAuthConnect = async (params: {
 };
 
 export const getTokenStatus = async (userId: string): Promise<TokenStatusResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/tokens/${userId}/status`);
+  const response = await apiFetch(`${API_BASE_URL}/api/tokens/${userId}/status`);
   if (!response.ok) throw new Error(`Token status failed: ${response.statusText}`);
   return await response.json();
 };
@@ -679,7 +689,7 @@ export const createCampaigns = async (params: {
   product?: Record<string, unknown>;
   targeting?: Record<string, unknown>;
 }): Promise<CampaignCreateResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/campaigns/create`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/campaigns/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -700,7 +710,7 @@ export const executeOptimizerActions = async (params: {
   userId: string;
   actions: Array<Record<string, unknown>>;
 }): Promise<{ status: string; results: Array<Record<string, unknown>>; errors: string[] }> => {
-  const response = await fetch(`${API_BASE_URL}/api/campaigns/optimizer/execute`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/campaigns/optimizer/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -725,7 +735,7 @@ export const executeCopilotActions = async (params: {
   skipped_guardrail_count: number;
   execution: { results: Array<Record<string, unknown>>; errors: string[]; skipped: Array<Record<string, unknown>> };
 }> => {
-  const response = await fetch(`${API_BASE_URL}/api/copilot/execute`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/copilot/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -743,7 +753,7 @@ export const runOptimizer = async (params: {
   userId: string;
   campaignMetrics: Array<Record<string, unknown>>;
 }): Promise<OptimizerResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/campaigns/optimizer/run`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/campaigns/optimizer/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: params.userId, campaign_metrics: params.campaignMetrics }),
@@ -754,7 +764,7 @@ export const runOptimizer = async (params: {
 };
 
 export const runWeeklyOptimizer = async (userId: string): Promise<OptimizerResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/campaigns/optimizer/run-weekly?user_id=${encodeURIComponent(userId)}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/campaigns/optimizer/run-weekly?user_id=${encodeURIComponent(userId)}`, {
     method: 'POST',
   });
 
@@ -763,7 +773,7 @@ export const runWeeklyOptimizer = async (userId: string): Promise<OptimizerRespo
 };
 
 export const getLatestOptimizer = async (userId: string): Promise<{ user_id: string; latest: Record<string, unknown> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/campaigns/optimizer/latest/${encodeURIComponent(userId)}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/campaigns/optimizer/latest/${encodeURIComponent(userId)}`);
   if (!response.ok) throw new Error(`Latest optimizer fetch failed: ${response.statusText}`);
   return await response.json();
 };
@@ -772,7 +782,7 @@ export const upsertSkuCatalog = async (params: {
   userId: string;
   skus: Array<Record<string, unknown>>;
 }): Promise<{ status: string; count: number; skus: Array<Record<string, unknown>> }> => {
-  const response = await fetch(`${API_BASE_URL}/api/offers/catalog/upsert`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/offers/catalog/upsert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: params.userId, skus: params.skus }),
@@ -787,7 +797,7 @@ export const recommendOffersV2 = async (params: {
   constraints?: Record<string, unknown>;
   experiment?: Record<string, unknown>;
 }): Promise<OfferRecommendationV2Response> => {
-  const response = await fetch(`${API_BASE_URL}/api/offers/recommend-v2`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/offers/recommend-v2`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -802,7 +812,7 @@ export const recommendOffersV2 = async (params: {
 };
 
 export const getRealtimeDashboard = async (userId: string): Promise<Record<string, unknown>> => {
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/realtime/${encodeURIComponent(userId)}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/dashboard/realtime/${encodeURIComponent(userId)}`);
   if (!response.ok) throw new Error(`Realtime dashboard failed: ${response.statusText}`);
   return await response.json();
 };
@@ -815,7 +825,7 @@ export const getMicroInfluencerPlan = async (params: {
   productCost: number;
   budget: number;
 }): Promise<MicroInfluencerPlanResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/marketing/micro-influencer-plan`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/marketing/micro-influencer-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -839,7 +849,7 @@ export const getTrustChecklist = async (params: {
   sampleQualityChecked: boolean;
   relatedUpsellEnabled: boolean;
 }): Promise<TrustChecklistResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/store/trust-checklist`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/store/trust-checklist`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -861,7 +871,7 @@ export const createExperiment = async (params: {
   variants: Array<Record<string, unknown>>;
   rules?: Record<string, unknown>;
 }): Promise<ExperimentResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/experiments/create`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/experiments/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -880,7 +890,7 @@ export const upsertExperimentMetrics = async (params: {
   experimentId: string;
   metrics: Array<Record<string, unknown>>;
 }): Promise<{ status: string; experiment: ExperimentResponse }> => {
-  const response = await fetch(`${API_BASE_URL}/api/experiments/${encodeURIComponent(params.experimentId)}/metrics/upsert`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/experiments/${encodeURIComponent(params.experimentId)}/metrics/upsert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -896,7 +906,7 @@ export const evaluateExperiment = async (params: {
   userId: string;
   experimentId: string;
 }): Promise<{ experiment_id: string; evaluation: Record<string, unknown> }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/experiments/${encodeURIComponent(params.experimentId)}/evaluate?user_id=${encodeURIComponent(params.userId)}`,
     { method: 'POST' },
   );
@@ -905,7 +915,7 @@ export const evaluateExperiment = async (params: {
 };
 
 export const listExperiments = async (userId: string): Promise<{ user_id: string; items: ExperimentResponse[] }> => {
-  const response = await fetch(`${API_BASE_URL}/api/experiments/${encodeURIComponent(userId)}`);
+  const response = await apiFetch(`${API_BASE_URL}/api/experiments/${encodeURIComponent(userId)}`);
   if (!response.ok) throw new Error(`List experiments failed: ${response.statusText}`);
   return await response.json();
 };
@@ -921,7 +931,7 @@ export const assignExperimentVariant = async (params: {
   variant_name: string;
   status: string;
 }> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/experiments/${encodeURIComponent(params.experimentId)}/assign?user_id=${encodeURIComponent(params.userId)}&session_id=${encodeURIComponent(params.sessionId)}`,
   );
   if (!response.ok) throw new Error(`Assign experiment variant failed: ${response.statusText}`);
@@ -945,7 +955,7 @@ export const ingestExperimentEvent = async (params: {
   increments: Record<string, number>;
   evaluation?: Record<string, unknown> | null;
 }> => {
-  const response = await fetch(`${API_BASE_URL}/api/experiments/events`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/experiments/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

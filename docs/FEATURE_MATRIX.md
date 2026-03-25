@@ -13,6 +13,7 @@ Status legend:
 | Route | Page | Phase | Status | Backend dependency |
 |---|---|---|---|---|
 | `/` | Marketing + product narrative homepage | Phase 1 | `live` | None (frontend-only) |
+| `/login` | Email/password auth + org session bootstrap | Phase 8 | `live` | `/api/auth/register`, `/api/auth/login`, `/api/auth/session`, `/api/auth/switch-org`, `/api/auth/logout` |
 | `/os` | Growth OS guided workflow (connect -> intel -> product -> offer -> creative -> launch) | Phase 1-5 | `live` | Uses `phase1Service` + worker APIs |
 | `/finder` | Product/Supplier finder UI | Phase 1-3 | `live` | `/api/analyze` + sourcing wrappers |
 | `/onboarding` | Enterprise onboarding wizard with persisted state/versioning | Phase 6.1 | `live` | `/api/onboarding/*`, `/api/onboarding/state/*` |
@@ -25,6 +26,12 @@ Status legend:
 | Method | Endpoint | Module | Status | Notes |
 |---|---|---|---|---|
 | `GET` | `/health` | Core | `live` | Implemented in worker main + service layer |
+| `GET` | `/api/status/routes` | Auth + Session | `live` | Single endpoint route/status/auth map for all worker API routes |
+| `POST` | `/api/auth/register` | Auth + Session | `live` | Email/password registration + org bootstrap + session issuance |
+| `POST` | `/api/auth/login` | Auth + Session | `live` | Email/password login + org membership selection + session issuance |
+| `GET` | `/api/auth/session` | Auth + Session | `live` | Validates bearer token and returns resolved user/org/role context |
+| `POST` | `/api/auth/switch-org` | Auth + Session | `live` | Rotates session token to selected org membership |
+| `POST` | `/api/auth/logout` | Auth + Session | `live` | Revokes active bearer session |
 | `GET` | `/api/onboarding/{user_id}` | State + Onboarding | `live` | Implemented in worker main + service layer |
 | `GET` | `/api/onboarding/state/{user_id}` | State + Onboarding | `live` | Implemented in worker main + service layer |
 | `POST` | `/api/onboarding/state/upsert` | State + Onboarding | `live` | Implemented in worker main + service layer |

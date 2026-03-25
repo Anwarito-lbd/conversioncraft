@@ -38,11 +38,16 @@ conversioncraft/
 
 ## Current Feature Scope
 
+Protected app surfaces (`/os`, `/dashboard`, `/onboarding`, `/studio`) expose org/session controls directly in the header (org switch + logout).
+
 ### 1) Channel + Auth Layer
 
 - OAuth/connect scaffolding for Shopify, Meta, TikTok
 - Token storage, rotation hooks, audit logging
 - Webhook verification and idempotency guards
+- Real auth/session layer (email/password + bearer session token)
+- Org-aware session switching and RBAC enforcement on protected `/api/*` routes
+- DB-backed encrypted credential/session store (`secure_store.db`)
 
 ### 2) Intelligence Layer
 
@@ -82,6 +87,28 @@ conversioncraft/
 | 7 | Enterprise analytics + routing/escalation panels in `/dashboard` | `/api/analytics/*`, `/api/alerts/*`, `/api/sla/*` | org/team RBAC + alert/sla stores |
 
 ## API Contracts by Module (Worker)
+
+### Auth + Session
+
+- `POST /api/auth/register`  
+  Body: `{ email, password, name?, org_name?, org_id? }`  
+  Response: `{ token, session, user, org }`
+- `POST /api/auth/login`  
+  Body: `{ email, password, org_id? }`  
+  Response: `{ token, session, user, org, orgs }`
+- `GET /api/auth/session`  
+  Header: `Authorization: Bearer <token>`  
+  Response: `{ session, user, org, orgs }`
+- `POST /api/auth/switch-org`  
+  Header: `Authorization: Bearer <token>`  
+  Body: `{ org_id }`  
+  Response: `{ token, session, org }`
+- `POST /api/auth/logout`  
+  Header: `Authorization: Bearer <token>`  
+  Response: `{ status, revoked }`
+- `GET /api/status/routes`  
+  Header: `Authorization: Bearer <token>`  
+  Response: full route inventory with `{ path, methods, module, auth_required, public_api }`
 
 ### Onboarding + Studio State
 
@@ -150,6 +177,12 @@ Execution endpoints now enforce these controls:
 - `/api/campaigns/optimizer/execute`
 - `/api/copilot/execute`
 - `/api/autopilot/launch`
+
+### New: Full Route Status Map
+
+- `GET /api/status/routes`  
+  Header: `Authorization: Bearer <token>`  
+  Response: canonical method/path/module/auth-requirement map for all worker routes.
 
 ## Skills + Agents in This Workspace
 
@@ -234,6 +267,8 @@ npm run dev
 - Webhooks: `SHOPIFY_WEBHOOK_SECRET`, `META_WEBHOOK_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `TIKTOK_WEBHOOK_SECRET`
 - Billing: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - Core app/API: `DATABASE_URL`, `CORS_ORIGINS`
+- Sessions: `AUTH_SESSION_TTL_SECONDS`
+- Secure storage: `SECURE_STORE_DB_PATH`, `STORE_ENCRYPTION_KEY`
 - Optimizer guardrails: `MAX_BUDGET_INCREASE_PCT_DAILY_META`, `MAX_BUDGET_INCREASE_PCT_DAILY_TIKTOK`, `MIN_ROAS_GUARDRAIL_META`, `MIN_ROAS_GUARDRAIL_TIKTOK`
 
 ## Product Roadmap Snapshot

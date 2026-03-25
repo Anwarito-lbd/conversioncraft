@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   BarChart3,
@@ -56,11 +57,12 @@ import type {
   SupplierCandidate,
   TrustChecklist,
 } from '@/types/phase1';
+import { AuthSessionState, resolveActiveSession } from '@/services/authClient';
+import SessionControls from '@/components/SessionControls';
 
 type StepId = 'connect' | 'intel' | 'product' | 'offer' | 'creative' | 'launch';
 
 const STORAGE_KEY = 'conversioncraft_growth_os_v2';
-const USER_ID = 'demo-user-1';
 const PLATFORMS: IntegrationPlatform[] = ['shopify', 'meta', 'tiktok', 'instagram', 'facebook'];
 
 const platformLabel = (platform: IntegrationPlatform) => {
@@ -92,8 +94,12 @@ function createDefaultIntegrations(): IntegrationAccount[] {
 }
 
 export default function GrowthOsPage() {
+  const router = useRouter();
+  const [auth, setAuth] = useState<AuthSessionState | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState<StepId>('connect');
   const [redirectUri, setRedirectUri] = useState('http://localhost:3000/oauth/callback');
+  const userId = auth?.session.user_id || '';
 
   const [integrations, setIntegrations] = useState<IntegrationAccount[]>(createDefaultIntegrations());
   const [connecting, setConnecting] = useState<Record<string, boolean>>({});
@@ -152,6 +158,18 @@ export default function GrowthOsPage() {
   };
 
   useEffect(() => {
+    void (async () => {
+      const session = await resolveActiveSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setAuth(session);
+      setAuthLoading(false);
+    })();
+  }, [router]);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       setRedirectUri(`${window.location.origin}/oauth/callback`);
     }
@@ -207,11 +225,12 @@ export default function GrowthOsPage() {
   }, [currentStep, integrations, competitorUrl, niche, supplierUrl, dailyBudget, objective, markets, interests, shopDomain]);
 
   useEffect(() => {
+    if (!userId) return;
     void (async () => {
       try {
-        const next = await refreshIntegrationStatus(USER_ID, integrations);
+        const next = await refreshIntegrationStatus(userId, integrations);
         setIntegrations(next);
-        const onboarding = await getOnboardingStatusPhase1(USER_ID);
+        const onboarding = await getOnboardingStatusPhase1(userId);
         setOnboardingEnv(onboarding.env);
         setOnboardingReady(onboarding.readyForLaunch);
       } catch (error) {
@@ -220,7 +239,7 @@ export default function GrowthOsPage() {
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId]);
 
   const connectedCount = integrations.filter((i) => i.connected).length;
 
@@ -248,10 +267,11 @@ export default function GrowthOsPage() {
   }, [connectedCount, competitor, selectedProduct, selectedSupplier, offerStack, pageDraft, creativeDraft, plan, publishResult]);
 
   const onSyncConnections = async () => {
+    if (!userId) return;
     try {
-      const next = await refreshIntegrationStatus(USER_ID, integrations);
+      const next = await refreshIntegrationStatus(userId, integrations);
       setIntegrations(next);
-      const onboarding = await getOnboardingStatusPhase1(USER_ID);
+      const onboarding = await getOnboardingStatusPhase1(userId);
       setOnboardingEnv(onboarding.env);
       setOnboardingReady(onboarding.readyForLaunch);
       addEvent('Connection status synced from token store.');
@@ -262,9 +282,10 @@ export default function GrowthOsPage() {
   };
 
   const onStartOAuth = async (platform: IntegrationPlatform) => {
+    if (!userId) return;
     setConnecting((prev) => ({ ...prev, [`start-${platform}`]: true }));
     try {
-      const account = await startPlatformOAuth(platform, USER_ID, redirectUri, shopDomain);
+      const account = await startPlatformOAuth(platform, userId, redirectUri, shopDomain);
       setIntegrations((prev) => prev.map((item) => (item.platform === platform ? { ...item, ...account } : item)));
       setOauthStates((prev) => ({ ...prev, [platform]: account.oauthState || '' }));
       setOauthNonces((prev) => ({ ...prev, [platform]: account.oauthNonce || '' }));
@@ -278,13 +299,14 @@ export default function GrowthOsPage() {
   };
 
   const onCompleteOAuth = async (platform: IntegrationPlatform) => {
+    if (!userId) return;
     const code = oauthCodes[platform] || '';
     const state = oauthStates[platform] || '';
     const nonce = oauthNonces[platform] || '';
     if (!code.trim() || !state.trim()) return;
     setConnecting((prev) => ({ ...prev, [`complete-${platform}`]: true }));
     try {
-      const account = await completePlatformOAuth(platform, USER_ID, code, state, nonce || undefined);
+      const account = await completePlatformOAuth(platform, userId, code, state, nonce || undefined);
       setIntegrations((prev) => prev.map((item) => (item.platform === platform ? { ...item, ...account } : item)));
       setOauthCodes((prev) => ({ ...prev, [platform]: '' }));
       setOauthStates((prev) => ({ ...prev, [platform]: '' }));
@@ -343,14 +365,14 @@ export default function GrowthOsPage() {
   };
 
   const onGenerateOfferAndPage = async () => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || !userId) return;
     setPageLoading(true);
     try {
       const nextOffer = buildOfferStack(selectedProduct, selectedSupplier);
       const nextPage = await generateProductPageDraftPhase1(supplierUrl, selectedProduct.name);
       setOfferStack(nextOffer);
-      await seedSkuCatalogPhase1(USER_ID, selectedProduct, selectedSupplier);
-      const nextOfferV2 = await generateOfferEngineV2Phase1(USER_ID, selectedProduct, selectedSupplier);
+      await seedSkuCatalogPhase1(userId, selectedProduct, selectedSupplier);
+      const nextOfferV2 = await generateOfferEngineV2Phase1(userId, selectedProduct, selectedSupplier);
       setOfferV2(nextOfferV2);
       setPageDraft(nextPage);
       addEvent('Offer Engine v2 + page draft created.');
@@ -401,27 +423,27 @@ export default function GrowthOsPage() {
   };
 
   const onPublishDrafts = async () => {
-    if (!plan || !selectedProduct) return;
+    if (!plan || !selectedProduct || !userId) return;
     setPublishLoading(true);
     try {
       const [planData, trustData] = await Promise.all([
-        getMicroInfluencerPlanPhase1(USER_ID, niche, selectedProduct, selectedSupplier, plan.dailyBudget),
-        getTrustChecklistPhase1(USER_ID, Boolean(offerV2)),
+        getMicroInfluencerPlanPhase1(userId, niche, selectedProduct, selectedSupplier, plan.dailyBudget),
+        getTrustChecklistPhase1(userId, Boolean(offerV2)),
       ]);
       setMicroPlan(planData);
       setTrustChecklist(trustData);
-      const result = await publishCampaignDraftPhase1(USER_ID, plan, selectedProduct.name);
+      const result = await publishCampaignDraftPhase1(userId, plan, selectedProduct.name);
       setPublishResult(result);
       if (offerV2 && !experimentId) {
-        const created = await createOfferExperimentPhase1(USER_ID, selectedProduct.name, offerV2);
+        const created = await createOfferExperimentPhase1(userId, selectedProduct.name, offerV2);
         setExperimentId(created.experimentId);
-        await runExperimentTrafficSamplePhase1(USER_ID, created.experimentId);
-        const evalResult = await evaluateOfferExperimentPhase1(USER_ID, created.experimentId);
+        await runExperimentTrafficSamplePhase1(userId, created.experimentId);
+        const evalResult = await evaluateOfferExperimentPhase1(userId, created.experimentId);
         setExperimentResult(
           `Experiment ${created.experimentId.slice(0, 8)}: top ${evalResult.topVariantId}, lift ${evalResult.liftPct.toFixed(2)}%, promoted ${evalResult.promoted ? 'yes' : 'no'}.`,
         );
       }
-      const realtime = await getRealtimeSnapshotPhase1(USER_ID);
+      const realtime = await getRealtimeSnapshotPhase1(userId);
       setRealtimeSnapshot(realtime);
       const latest = (realtime.optimizer_latest as { result?: { summary?: string; actions?: Array<Record<string, unknown>> }; execution?: { results?: Array<Record<string, unknown>>; errors?: string[]; skipped?: Array<Record<string, unknown>> } } | undefined) || {};
       setOptimizerSummary(String(latest.result?.summary || 'Auto-optimizer runs on schedule.'));
@@ -435,6 +457,10 @@ export default function GrowthOsPage() {
       setPublishLoading(false);
     }
   };
+
+  if (authLoading) {
+    return <main className="min-h-screen bg-[#020612]" />;
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#020612] text-slate-100">
@@ -452,9 +478,12 @@ export default function GrowthOsPage() {
                 One guided flow: connect channels, discover winning products + suppliers, generate premium offers/creatives, launch campaigns, and auto-optimize revenue.
               </p>
             </div>
-            <div className="rounded-2xl border border-emerald-300/25 bg-slate-900/70 p-4 text-right shadow-[0_0_40px_rgba(16,185,129,0.15)]">
-              <p className="text-xs uppercase text-slate-400">Readiness</p>
-              <p className="text-3xl font-bold text-emerald-300">{readiness}%</p>
+            <div className="flex flex-col items-end gap-2">
+              <SessionControls auth={auth} onSessionChanged={setAuth} />
+              <div className="rounded-2xl border border-emerald-300/25 bg-slate-900/70 p-4 text-right shadow-[0_0_40px_rgba(16,185,129,0.15)]">
+                <p className="text-xs uppercase text-slate-400">Readiness</p>
+                <p className="text-3xl font-bold text-emerald-300">{readiness}%</p>
+              </div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { AlertTriangle, BarChart3, BellRing, RefreshCw, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import { getRealtimeSnapshotPhase1, listExperimentsPhase1 } from '@/services/phase1Service';
@@ -26,12 +27,14 @@ import {
   upsertEscalationPolicy,
   upsertAnalyticsPreferences,
 } from '@/services/apiClient';
+import { AuthSessionState, resolveActiveSession } from '@/services/authClient';
 import SpotlightCard from '@/components/ui/SpotlightCard';
-
-const USER_ID = 'demo-user-1';
-const ORG_ID = 'demo-org-1';
+import SessionControls from '@/components/SessionControls';
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const [auth, setAuth] = useState<AuthSessionState | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [snapshot, setSnapshot] = useState<Record<string, unknown> | null>(null);
@@ -50,7 +53,7 @@ export default function DashboardPage() {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [anomalyPack, setAnomalyPack] = useState<Record<string, unknown> | null>(null);
   const [orgComparison, setOrgComparison] = useState<Record<string, unknown> | null>(null);
-  const [orgCompareInput, setOrgCompareInput] = useState('demo-org-1,demo-org-2,demo-org-3');
+  const [orgCompareInput, setOrgCompareInput] = useState('');
   const [routingRoutes, setRoutingRoutes] = useState<AlertRoute[]>([]);
   const [alertEvents, setAlertEvents] = useState<Array<Record<string, unknown>>>([]);
   const [slaMetrics, setSlaMetrics] = useState<Record<string, unknown> | null>(null);
@@ -76,8 +79,24 @@ export default function DashboardPage() {
   const [activeJumpTarget, setActiveJumpTarget] = useState<'suppression' | 'oncall' | null>(null);
   const suppressionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const onCallTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const userId = auth?.session.user_id || '';
+  const orgId = auth?.session.org_id || '';
 
-  const load = async () => {
+  useEffect(() => {
+    void (async () => {
+      const session = await resolveActiveSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setAuth(session);
+      setOrgCompareInput(session.session.org_id);
+      setAuthLoading(false);
+    })();
+  }, [router]);
+
+  const load = useCallback(async () => {
+    if (!userId || !orgId) return;
     setError('');
     try {
       await checkWorkerHealth();
@@ -88,11 +107,11 @@ export default function DashboardPage() {
         .filter(Boolean)
         .slice(0, 8);
       const [data, exp, ent] = await Promise.all([
-        getRealtimeSnapshotPhase1(USER_ID),
-        listExperimentsPhase1(USER_ID),
+        getRealtimeSnapshotPhase1(userId),
+        listExperimentsPhase1(userId),
         getEnterpriseAnalytics({
-          orgId: ORG_ID,
-          actorUserId: USER_ID,
+          orgId: orgId,
+          actorUserId: userId,
           lookbackDays: 7,
           roleFilter,
           userFilter,
@@ -102,12 +121,12 @@ export default function DashboardPage() {
         }),
       ]);
       const [anomalyResult, compareResult, eventResult, slaResult] = await Promise.all([
-        getOrgAnomalies({ orgId: ORG_ID, actorUserId: USER_ID }),
+        getOrgAnomalies({ orgId: orgId, actorUserId: userId }),
         compareOrgIds.length >= 2
-          ? compareOrganizations({ actorUserId: USER_ID, orgIds: compareOrgIds })
-          : Promise.resolve({ actor_user_id: USER_ID, org_ids: [ORG_ID], ranked: [], generated_at: new Date().toISOString() }),
-        listAlertEvents({ orgId: ORG_ID, actorUserId: USER_ID, limit: 20 }),
-        getSlaMetrics({ orgId: ORG_ID, actorUserId: USER_ID, limit: 100 }),
+          ? compareOrganizations({ actorUserId: userId, orgIds: compareOrgIds })
+          : Promise.resolve({ actor_user_id: userId, org_ids: [orgId], ranked: [], generated_at: new Date().toISOString() }),
+        listAlertEvents({ orgId: orgId, actorUserId: userId, limit: 20 }),
+        getSlaMetrics({ orgId: orgId, actorUserId: userId, limit: 100 }),
       ]);
       setSnapshot(data);
       setExperiments(exp);
@@ -122,19 +141,29 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    forecastHorizonDays,
+    orgCompareInput,
+    orgId,
+    roleFilter,
+    slaDlqThreshold15m,
+    slaSyncStaleMinutes,
+    userFilter,
+    userId,
+  ]);
 
   useEffect(() => {
+    if (!userId || !orgId) return;
     void (async () => {
       try {
-        const prefs = await getAnalyticsPreferences({ orgId: ORG_ID, actorUserId: USER_ID });
+        const prefs = await getAnalyticsPreferences({ orgId: orgId, actorUserId: userId });
         setRoleFilter(prefs.settings.role_filter || 'all');
         setUserFilter(prefs.settings.user_filter || 'all');
         setSlaSyncStaleMinutes(Number(prefs.settings.sla_sync_stale_minutes || 30));
         setSlaDlqThreshold15m(Number(prefs.settings.sla_dlq_threshold_15m || 0));
         setForecastHorizonDays(Number(prefs.settings.forecast_horizon_days || 7));
-        const routing = await getAlertRouting({ orgId: ORG_ID, actorUserId: USER_ID });
-        const escalation = await getEscalationPolicy({ orgId: ORG_ID, actorUserId: USER_ID });
+        const routing = await getAlertRouting({ orgId: orgId, actorUserId: userId });
+        const escalation = await getEscalationPolicy({ orgId: orgId, actorUserId: userId });
         setEscalationPolicy({
           enabled: Boolean(escalation.policy.enabled),
           repeated_critical_threshold: Number(escalation.policy.repeated_critical_threshold || 3),
@@ -179,16 +208,16 @@ export default function DashboardPage() {
       }
       setPreferencesLoaded(true);
     })();
-  }, []);
+  }, [userId, orgId]);
 
   useEffect(() => {
-    if (!preferencesLoaded) return;
+    if (!preferencesLoaded || !userId || !orgId) return;
     void load();
     const timer = window.setInterval(() => {
       void load();
     }, 15000);
     return () => window.clearInterval(timer);
-  }, [preferencesLoaded, roleFilter, userFilter, slaSyncStaleMinutes, slaDlqThreshold15m, forecastHorizonDays]);
+  }, [preferencesLoaded, load, userId, orgId]);
 
   const campaignSummary = useMemo(() => {
     const campaigns = (snapshot?.campaigns as Record<string, unknown> | undefined) || {};
@@ -305,8 +334,8 @@ export default function DashboardPage() {
     setCopilotStatus('Executing safe actions...');
     try {
       const result = await executeCopilotActions({
-        userId: USER_ID,
-        orgId: ORG_ID,
+        userId: userId,
+        orgId: orgId,
         actions: safeActions,
         guardrails: {
           min_roas: 1.2,
@@ -327,8 +356,8 @@ export default function DashboardPage() {
   const persistAnalyticsControls = async () => {
     try {
       await upsertAnalyticsPreferences({
-        orgId: ORG_ID,
-        actorUserId: USER_ID,
+        orgId: orgId,
+        actorUserId: userId,
         settings: {
           role_filter: roleFilter,
           user_filter: userFilter,
@@ -379,7 +408,7 @@ export default function DashboardPage() {
 
   const saveRoutingRules = async () => {
     try {
-      await upsertAlertRouting({ orgId: ORG_ID, actorUserId: USER_ID, routes: routingRoutes });
+      await upsertAlertRouting({ orgId: orgId, actorUserId: userId, routes: routingRoutes });
       setRoutingStatus('Alert routing saved.');
     } catch (err) {
       setRoutingStatus(err instanceof Error ? err.message : 'Failed to save routing.');
@@ -388,7 +417,7 @@ export default function DashboardPage() {
 
   const runDispatch = async () => {
     try {
-      const result = await dispatchAlerts({ orgId: ORG_ID, actorUserId: USER_ID });
+      const result = await dispatchAlerts({ orgId: orgId, actorUserId: userId });
       setDispatchStatus(`Dispatched ${result.deliveries_count} deliveries from ${result.alerts_count} alerts. Skipped duplicates: ${result.skipped_duplicates}.`);
       setDispatchSummary(result as unknown as Record<string, unknown>);
       await load();
@@ -402,8 +431,8 @@ export default function DashboardPage() {
       setSuppressionValidation(null);
       setOnCallValidation(null);
       await upsertEscalationPolicy({
-        orgId: ORG_ID,
-        actorUserId: USER_ID,
+        orgId: orgId,
+        actorUserId: userId,
         policy: escalationPolicy,
         suppressionWindowsJson: suppressionJson,
         onCallScheduleJson: onCallJson,
@@ -454,12 +483,16 @@ export default function DashboardPage() {
 
   const acknowledgeEvent = async (eventId: string) => {
     try {
-      await ackAlertEvent({ orgId: ORG_ID, actorUserId: USER_ID, eventId });
+      await ackAlertEvent({ orgId: orgId, actorUserId: userId, eventId });
       await load();
     } catch (err) {
       setDispatchStatus(err instanceof Error ? err.message : 'Acknowledge failed.');
     }
   };
+
+  if (authLoading) {
+    return <main className="min-h-screen bg-[#020612]" />;
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#020612] text-slate-100">
@@ -486,11 +519,14 @@ export default function DashboardPage() {
                 Worker API: {workerStatus === 'online' ? 'fetch successful' : 'offline'}
               </p>
             </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs hover:bg-slate-800">
-                <RefreshCw className="h-3.5 w-3.5" /> Refresh
-              </button>
-              <Link href="/os" className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs hover:bg-slate-800">Back to OS</Link>
+            <div className="flex flex-col items-end gap-2">
+              <SessionControls auth={auth} onSessionChanged={setAuth} compact />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs hover:bg-slate-800">
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                </button>
+                <Link href="/os" className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs hover:bg-slate-800">Back to OS</Link>
+              </div>
             </div>
           </div>
         </motion.section>
@@ -658,7 +694,7 @@ export default function DashboardPage() {
           <div className="rounded-2xl border border-slate-700/70 bg-slate-900/45 p-4 backdrop-blur">
             <h2 className="inline-flex items-center gap-2 text-sm font-semibold"><BarChart3 className="h-4 w-4 text-cyan-300" /> Phase 7 Team + Org Drilldowns</h2>
             <p className="mt-2 text-xs text-slate-400">
-              Org {String(enterpriseOrg.name || ORG_ID)} • Members {String(enterpriseOrg.members || 0)} • Campaigns {String(enterpriseOrg.campaigns || 0)}
+              Org {String(enterpriseOrg.name || orgId)} • Members {String(enterpriseOrg.members || 0)} • Campaigns {String(enterpriseOrg.campaigns || 0)}
             </p>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-left text-xs">

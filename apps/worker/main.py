@@ -2,6 +2,8 @@ import json
 import os
 import secrets
 import hashlib
+import contextvars
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -9,6 +11,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from src.agents.copywriter import copywriter_agent
@@ -59,6 +63,7 @@ from src.services.mailchimp_service import mailchimp_service
 from src.services.manus_service import manus_service
 from src.services.upcart_service import upcart_service
 from src.services.chatbot_service import chatbot_service
+from src.services.auth_service import auth_service
 
 
 @asynccontextmanager
@@ -74,6 +79,7 @@ app = FastAPI(title="ConversionCraft Worker API", version="0.5.0", lifespan=life
 
 _origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+AUTH_SESSION_TTL_SECONDS = int(os.getenv("AUTH_SESSION_TTL_SECONDS", "604800") or "604800")
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,6 +88,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_request_session: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
+    "request_session",
+    default=None,
+)
+
+PUBLIC_API_EXACT_PATHS = {
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/payments/webhook",
+}
+PUBLIC_API_PREFIXES = ("/api/webhooks/",)
+
+
+def _is_public_api_path(path: str) -> bool:
+    if path in PUBLIC_API_EXACT_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in PUBLIC_API_PREFIXES)
+
+
+def _requires_session_for_path(path: str) -> bool:
+    if not path.startswith("/api"):
+        return False
+    return not _is_public_api_path(path)
+
+
+def _extract_bearer_token(authorization: Optional[str]) -> str:
+    if not authorization:
+        return ""
+    raw = authorization.strip()
+    if not raw.lower().startswith("bearer "):
+        return ""
+    return raw.split(" ", 1)[1].strip()
+
+
+@app.middleware("http")
+async def inject_session_context(request: Request, call_next):
+    token = _extract_bearer_token(request.headers.get("authorization"))
+    session = auth_service.get_session(token) if token else None
+    request.state.session = session
+    ctx = _request_session.set(session)
+    try:
+        if _requires_session_for_path(request.url.path) and not session:
+            return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        return await call_next(request)
+    finally:
+        _request_session.reset(ctx)
 
 
 class AnalyzeRequest(BaseModel):
@@ -125,6 +178,24 @@ class OAuthCallbackRequest(BaseModel):
     state: str
     nonce: Optional[str] = None
     org_id: Optional[str] = None
+
+
+class AuthRegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str = ""
+    org_name: str = ""
+    org_id: Optional[str] = None
+
+
+class AuthLoginRequest(BaseModel):
+    email: str
+    password: str
+    org_id: Optional[str] = None
+
+
+class AuthSwitchOrgRequest(BaseModel):
+    org_id: str
 
 
 class CampaignCreateRequest(BaseModel):
@@ -487,6 +558,31 @@ def _ingest_experiment_event(
     }
 
 
+def _current_session(required: bool = False) -> Optional[Dict[str, Any]]:
+    session = _request_session.get()
+    if required and not session:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return session
+
+
+def _slugify_org_id(name: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", name.strip().lower())
+    normalized = normalized.strip("-")
+    return normalized or f"org-{secrets.token_hex(3)}"
+
+
+def _assert_session_identity(user_id: str, org_id: Optional[str] = None, minimum_role: str = "viewer") -> Dict[str, Any]:
+    session = _current_session(required=True) or {}
+    session_user_id = str(session.get("user_id", ""))
+    session_org_id = str(session.get("org_id", ""))
+    if session_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Session user mismatch")
+    target_org_id = org_id or session_org_id
+    if target_org_id:
+        _require_org_role(target_org_id, user_id, minimum_role)
+    return session
+
+
 def _enforce_rate_limit(scope: str, user_id: str, limit: int, window_seconds: int) -> None:
     ok, retry_after = rate_limiter.allow(f"{scope}:{user_id}", limit, window_seconds)
     if not ok:
@@ -497,20 +593,31 @@ def _enforce_rate_limit(scope: str, user_id: str, limit: int, window_seconds: in
 
 
 def _require_org_role(org_id: Optional[str], user_id: str, minimum_role: str) -> None:
-    if not org_id:
+    session = _current_session(required=True)
+    session_user_id = str(session.get("user_id", ""))
+    session_org_id = str(session.get("org_id", ""))
+    if session_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Session user mismatch")
+    effective_org_id = org_id or session_org_id
+    if org_id and session_org_id and org_id != session_org_id:
+        raise HTTPException(status_code=403, detail="Session org mismatch")
+    if not effective_org_id:
         return
     try:
-        org_rbac_store.require_role(org_id, user_id, minimum_role)
+        org_rbac_store.require_role(effective_org_id, user_id, minimum_role)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 def _ensure_org_access(org_id: Optional[str], user_id: str, minimum_role: str) -> None:
-    if not org_id:
-        return
-    if not org_rbac_store.get_org(org_id):
-        org_rbac_store.create_org(org_id, f"Org {org_id}", user_id)
-    _require_org_role(org_id, user_id, minimum_role)
+    session = _current_session(required=True)
+    session_org_id = str(session.get("org_id", ""))
+    effective_org_id = org_id or session_org_id
+    if not effective_org_id:
+        raise HTTPException(status_code=400, detail="org_id is required for this operation")
+    if not org_rbac_store.get_org(effective_org_id):
+        org_rbac_store.create_org(effective_org_id, f"Org {effective_org_id}", user_id)
+    _require_org_role(effective_org_id, user_id, minimum_role)
 
 
 def _idempotency_key(
@@ -847,8 +954,159 @@ def health_check():
     return {"status": "ok"}
 
 
+def _route_module(path: str) -> str:
+    if path.startswith("/api/auth"):
+        return "Auth + Session"
+    if path.startswith("/api/onboarding") or path.startswith("/api/studio") or path.startswith("/api/state"):
+        return "State + Onboarding"
+    if path.startswith("/api/analytics") or path.startswith("/api/alerts") or path.startswith("/api/sla") or path.startswith("/api/ops"):
+        return "Analytics + Alerts"
+    if path.startswith("/api/oauth") or path.startswith("/api/tokens") or path.startswith("/api/campaigns") or path.startswith("/api/audit") or path.startswith("/api/dlq"):
+        return "OAuth + Campaign Ops"
+    if path.startswith("/api/offers") or path.startswith("/api/attribution") or path.startswith("/api/sourcing"):
+        return "Growth Intelligence"
+    if path.startswith("/api/experiments"):
+        return "Experimentation"
+    if path.startswith("/api/webhooks"):
+        return "Webhooks"
+    if path.startswith("/api/payments") or path.startswith("/api/"):
+        return "Integrations + AI Services"
+    return "Core"
+
+
+@app.get("/api/status/routes")
+def route_status_map():
+    _current_session(required=True)
+    rows: List[Dict[str, Any]] = []
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        methods = sorted(m for m in route.methods if m not in {"HEAD", "OPTIONS"})
+        if not methods:
+            continue
+        path = route.path
+        rows.append(
+            {
+                "path": path,
+                "methods": methods,
+                "module": _route_module(path),
+                "auth_required": _requires_session_for_path(path),
+                "public_api": _is_public_api_path(path),
+                "name": route.name,
+            }
+        )
+    rows.sort(key=lambda item: item["path"])
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "total_routes": len(rows),
+        "routes": rows,
+    }
+
+
+@app.post("/api/auth/register")
+def register_auth_user(request: AuthRegisterRequest):
+    try:
+        user = auth_service.create_user(request.email, request.password, request.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    org_name = request.org_name.strip() or f"{(request.name or request.email).split('@')[0]} Team"
+    org_id = (request.org_id or _slugify_org_id(org_name)).strip().lower()
+    if org_rbac_store.get_org(org_id):
+        org_id = f"{org_id}-{user['user_id'][-4:]}"
+    org = org_rbac_store.create_org(org_id, org_name, user["user_id"])
+    role = org_rbac_store.role_for(org_id, user["user_id"]) or "owner"
+    session = auth_service.create_session(user["user_id"], org_id, role, ttl_seconds=AUTH_SESSION_TTL_SECONDS)
+    audit_logger.log("auth.register", user["user_id"], {"org_id": org_id, "email": user["email"]})
+    return {
+        "token": session["token"],
+        "session": session["session"],
+        "user": user,
+        "org": {"org_id": org_id, "name": org.get("name", org_name), "role": role},
+    }
+
+
+@app.post("/api/auth/login")
+def login_auth_user(request: AuthLoginRequest):
+    user = auth_service.verify_credentials(request.email, request.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    orgs = org_rbac_store.list_orgs_for_user(user["user_id"])
+    if not orgs:
+        raise HTTPException(status_code=403, detail="User has no organization membership")
+
+    selected = None
+    if request.org_id:
+        selected = next((item for item in orgs if item.get("org_id") == request.org_id), None)
+        if not selected:
+            raise HTTPException(status_code=403, detail="User is not a member of requested org")
+    else:
+        selected = orgs[0]
+
+    org_id = str(selected.get("org_id", ""))
+    role = str(selected.get("role", "viewer"))
+    org_meta = org_rbac_store.get_org(org_id)
+
+    session = auth_service.create_session(user["user_id"], org_id, role, ttl_seconds=AUTH_SESSION_TTL_SECONDS)
+    audit_logger.log("auth.login", user["user_id"], {"org_id": org_id, "email": user["email"]})
+    return {
+        "token": session["token"],
+        "session": session["session"],
+        "user": user,
+        "org": {"org_id": org_id, "name": org_meta.get("name", org_id), "role": role},
+        "orgs": orgs,
+    }
+
+
+@app.get("/api/auth/session")
+def get_auth_session():
+    session = _current_session(required=True)
+    user_id = str(session.get("user_id", ""))
+    org_id = str(session.get("org_id", ""))
+    user = auth_service.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session user")
+    role = org_rbac_store.role_for(org_id, user_id) or str(session.get("role", "viewer"))
+    org = org_rbac_store.get_org(org_id)
+    return {
+        "session": {"user_id": user_id, "org_id": org_id, "role": role, "expires_at": session.get("expires_at")},
+        "user": user,
+        "org": {"org_id": org_id, "name": org.get("name", org_id), "role": role},
+        "orgs": org_rbac_store.list_orgs_for_user(user_id),
+    }
+
+
+@app.post("/api/auth/switch-org")
+def switch_auth_org(request: AuthSwitchOrgRequest):
+    session = _current_session(required=True)
+    user_id = str(session.get("user_id", ""))
+    role = org_rbac_store.role_for(request.org_id, user_id)
+    if not role:
+        raise HTTPException(status_code=403, detail="User is not a member of requested org")
+    next_session = auth_service.create_session(user_id, request.org_id, role, ttl_seconds=AUTH_SESSION_TTL_SECONDS)
+    org = org_rbac_store.get_org(request.org_id)
+    audit_logger.log("auth.switch_org", user_id, {"org_id": request.org_id})
+    return {
+        "token": next_session["token"],
+        "session": next_session["session"],
+        "org": {"org_id": request.org_id, "name": org.get("name", request.org_id), "role": role},
+    }
+
+
+@app.post("/api/auth/logout")
+def logout_auth_user(authorization: Optional[str] = Header(default=None)):
+    _current_session(required=True)
+    token = _extract_bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=400, detail="Missing bearer token")
+    revoked = auth_service.revoke_session(token)
+    return {"status": "ok", "revoked": revoked}
+
+
 @app.get("/api/onboarding/{user_id}")
 def onboarding_status(user_id: str):
+    session = _assert_session_identity(user_id)
     env_status = oauth_service.credentials_status()
     token_status = store.get_user_status(user_id)
     completed = {
@@ -860,6 +1118,7 @@ def onboarding_status(user_id: str):
     audit_logger.log("onboarding.status_viewed", user_id, {"completed": completed})
     return {
         "user_id": user_id,
+        "org_id": session.get("org_id", ""),
         "env": env_status,
         "connections": token_status,
         "completed": completed,
@@ -1592,6 +1851,7 @@ def oauth_callback(
 
 @app.get("/api/tokens/{user_id}/status")
 def token_status(user_id: str):
+    _assert_session_identity(user_id)
     return {"user_id": user_id, "status": store.get_user_status(user_id)}
 
 
@@ -1732,14 +1992,39 @@ def create_campaigns(
 
 
 @app.post("/api/tokens/rotate/run")
-def run_token_rotation():
-    summary = token_rotation_service.refresh_all_users()
-    audit_logger.log("tokens.rotation_manual", "system", summary)
+def run_token_rotation(user_id: str):
+    _assert_session_identity(user_id, minimum_role="marketer")
+    before_meta = store.get_platform_tokens(user_id, "meta")
+    before_tiktok = store.get_platform_tokens(user_id, "tiktok")
+    after_meta = token_rotation_service.refresh_meta_if_needed(user_id)
+    after_tiktok = token_rotation_service.refresh_tiktok_if_needed(user_id)
+    summary = {
+        "users_checked": 1,
+        "meta_refreshed": int(
+            bool(before_meta.get("access_token"))
+            and bool(after_meta.get("access_token"))
+            and (
+                before_meta.get("access_token") != after_meta.get("access_token")
+                or before_meta.get("connected_at") != after_meta.get("connected_at")
+            )
+        ),
+        "tiktok_refreshed": int(
+            bool(before_tiktok.get("access_token"))
+            and bool(after_tiktok.get("access_token"))
+            and (
+                before_tiktok.get("access_token") != after_tiktok.get("access_token")
+                or before_tiktok.get("connected_at") != after_tiktok.get("connected_at")
+            )
+        ),
+        "errors": [],
+    }
+    audit_logger.log("tokens.rotation_manual", user_id, summary)
     return {"status": "ok", "summary": summary}
 
 
 @app.post("/api/campaigns/metrics/upsert")
 def upsert_campaign_metrics(request: CampaignMetricsRequest):
+    _assert_session_identity(request.user_id, minimum_role="marketer")
     campaign_store.update_campaign_metrics(request.user_id, request.campaign_metrics)
     audit_logger.log("campaigns.metrics_upsert", request.user_id, {"count": len(request.campaign_metrics)})
     return {"status": "ok", "count": len(request.campaign_metrics)}
@@ -1747,6 +2032,7 @@ def upsert_campaign_metrics(request: CampaignMetricsRequest):
 
 @app.post("/api/campaigns/optimizer/run")
 def run_optimizer(request: OptimizerRequest):
+    _assert_session_identity(request.user_id, minimum_role="marketer")
     campaign_store.update_campaign_metrics(request.user_id, request.campaign_metrics)
     result = campaign_service.build_optimizer_actions(request.campaign_metrics)
     wrapped = {
@@ -1848,6 +2134,7 @@ def execute_copilot_actions(request: CopilotExecuteRequest):
 
 @app.post("/api/campaigns/optimizer/run-weekly")
 def run_weekly_optimizer(user_id: str):
+    _assert_session_identity(user_id, minimum_role="marketer")
     result = optimizer_scheduler.run_weekly_optimizer_now(user_id)
     action_count = len(result.get("result", {}).get("actions", []))
     audit_logger.log("optimizer.run_weekly", user_id, {"actions": action_count})
@@ -1856,6 +2143,7 @@ def run_weekly_optimizer(user_id: str):
 
 @app.get("/api/campaigns/optimizer/latest/{user_id}")
 def latest_optimizer_run(user_id: str):
+    _assert_session_identity(user_id)
     latest = campaign_store.get_latest_optimizer_run(user_id)
     return {"user_id": user_id, "latest": latest}
 
@@ -1867,6 +2155,7 @@ def sourcing_find(request: AnalyzeRequest):
 
 @app.post("/api/orgs/create")
 def create_org(request: OrgCreateRequest):
+    _assert_session_identity(request.owner_user_id)
     org = org_rbac_store.create_org(request.org_id, request.name, request.owner_user_id)
     audit_logger.log("org.create", request.owner_user_id, {"org_id": request.org_id, "name": request.name})
     return org
@@ -1874,6 +2163,7 @@ def create_org(request: OrgCreateRequest):
 
 @app.post("/api/orgs/{org_id}/members/upsert")
 def upsert_member(org_id: str, request: OrgMemberUpsertRequest):
+    _assert_session_identity(request.actor_user_id, org_id, "admin")
     try:
         org = org_rbac_store.upsert_member(org_id, request.actor_user_id, request.user_id, request.role)
     except ValueError as exc:
@@ -1896,6 +2186,7 @@ def list_members(org_id: str, actor_user_id: str = Query(...)):
 
 @app.post("/api/attribution/events")
 def ingest_attribution_event(request: AttributionEventRequest):
+    _assert_session_identity(request.user_id, minimum_role="viewer")
     _enforce_rate_limit("attribution_ingest", request.user_id, limit=180, window_seconds=60)
     row = attribution_service.ingest(request.user_id, request.event)
     audit_logger.log("attribution.event_ingested", request.user_id, {"type": row.get("type")})
@@ -1904,6 +2195,7 @@ def ingest_attribution_event(request: AttributionEventRequest):
 
 @app.get("/api/attribution/summary/{user_id}")
 def attribution_summary(user_id: str):
+    _assert_session_identity(user_id)
     summary = attribution_service.summary(user_id)
     return summary
 
@@ -1938,6 +2230,7 @@ def upsert_offer_catalog(request: SkuCatalogUpsertRequest):
 
 @app.get("/api/offers/catalog/{user_id}")
 def list_offer_catalog(user_id: str):
+    _assert_session_identity(user_id)
     return {"user_id": user_id, "skus": sku_catalog_store.list_skus(user_id)}
 
 
@@ -1965,6 +2258,7 @@ def recommend_offers_v2(request: OfferRecommendationV2Request):
 
 @app.get("/api/dashboard/realtime/{user_id}")
 def realtime_dashboard_snapshot(user_id: str):
+    _assert_session_identity(user_id)
     return {
         "campaigns": campaign_store.dashboard_snapshot(user_id),
         "attribution": attribution_service.summary(user_id),
@@ -2252,6 +2546,7 @@ def evaluate_experiment(experiment_id: str, user_id: str, org_id: Optional[str] 
 
 @app.get("/api/experiments/{user_id}")
 def list_experiments(user_id: str):
+    _assert_session_identity(user_id)
     return {"user_id": user_id, "items": experiment_store.list_experiments(user_id)}
 
 
