@@ -1,85 +1,111 @@
-# ConversionCraft Unified Repository
+# Conversion Craft
 
-ConversionCraft is a full-stack Growth OS for ecommerce teams: product/supplier discovery, offer/page generation, creative automation, campaign launch, optimizer execution, attribution, experimentation, onboarding, and revenue ops control.
+Conversion Craft is a SaaS **Growth OS for ecommerce**.
+It combines product intelligence, supplier discovery, page/offer generation, creative automation, paid-media execution, and revenue optimization in one system.
 
-This repository is now the **single working codebase** and includes current production-oriented work across web, worker, legacy UI assets, integrations, and operational tooling.
+## Product Goal
 
-## Consolidation Status
+Build a platform that helps ecommerce brands increase conversion and revenue by combining:
 
-Source repositories provided:
+- Competitor intelligence (Pomelli-style analysis)
+- Winning product + supplier discovery (dropship intelligence patterns)
+- AI offer and landing page generation (PagePilot-style workflows)
+- Creative automation for ad concepts, variants, UGC, and scheduling
+- Direct execution to ad/social channels (Meta, TikTok, Instagram/Facebook)
+- Always-on optimization loops (pause losers, scale winners, rebalance traffic)
 
-- `https://github.com/Anwarito-lbd/conversion.craft-.git`
-- `https://github.com/Anwarito-lbd/conversioncraft.git`
-- `https://github.com/Anwarito-lbd/conversion-craft-.git`
-- `https://github.com/Anwarito-lbd/conversion.craft-.git` (duplicate)
+Important: virality is not guaranteed. The platform is designed to maximize probability through strong creative, targeting, and iteration.
 
-Current status:
+## What This Repo Contains
 
-- `conversion.craft-`: cloned and compared; this repo is already a superset of its useful content.
-- `conversioncraft`: blocked by GitHub auth (private/credentialed access required).
-- `conversion-craft-`: blocked by GitHub auth (private/credentialed access required).
-
-See:
-
-- `/Users/anwarito/Desktop/conversioncraft5/docs/MERGE_STATUS.md`
-- `/Users/anwarito/Desktop/conversioncraft5/docs/BOOTSTRAP_REFERENCES_STATUS.md`
-- `/Users/anwarito/Desktop/conversioncraft5/scripts/import_sources.sh`
-- `/Users/anwarito/Desktop/conversioncraft5/scripts/bootstrap_reference_repos.sh`
-
-## Monorepo Layout
+This is the **single canonical repository** for Conversion Craft.
 
 ```text
-conversioncraft5/
+conversioncraft/
 ├── apps/
-│   ├── web/                  # Next.js app (Growth OS UI)
-│   └── worker/               # FastAPI worker (APIs, orchestration, automation)
+│   ├── web/                    # Next.js frontend (Growth OS UI)
+│   └── worker/                 # FastAPI backend worker/API + automation engine
 ├── packages/
-│   └── db/                   # Prisma schema
-├── legacy/                   # Legacy UI and feature artifacts
-├── docs/                     # Consolidation + references + operations docs
-├── scripts/                  # Utility scripts (repo import/bootstrap)
-├── tools/
-│   ├── sources/              # Optional staging folder for source imports
-│   ├── references/           # Optional staging folder for reference repo clones
-│   └── merge/                # Merge notes/artifacts
-└── docker-compose.yml
+│   └── db/                     # Shared database schema (Prisma)
+├── docs/                       # Merge, bootstrap, and reference documentation
+├── scripts/                    # Operational scripts (bootstrap/import)
+├── tools/                      # Optional local staging for source/reference clones
+├── legacy/                     # Archived legacy assets (non-primary runtime)
+├── docker-compose.yml
+├── render.yaml
+└── vercel.json
 ```
 
-## Product Surface
+## Current Feature Scope
 
-### Web app pages
+### 1) Channel + Auth Layer
 
-- `/` Home / Growth OS shell
-- `/finder` Product + supplier discovery
-- `/dashboard` Live growth intelligence (campaigns, attribution, experiments, SLA, routing)
-- `/onboarding` Enterprise setup wizard (persistent)
-- `/studio` Creative automation pipeline board
-- `/os` Operational control view
-- `/oauth/callback` OAuth callback flow
+- OAuth/connect scaffolding for Shopify, Meta, TikTok
+- Token storage, rotation hooks, audit logging
+- Webhook verification and idempotency guards
 
-### Worker capabilities
+### 2) Intelligence Layer
 
-- OAuth + secure token handling scaffolding (Shopify/Meta/TikTok)
-- Campaign creation + metrics ingest + optimizer execution loop
-- Offer Engine (upsell/bundle recommendations)
-- Experimentation engine (variant metrics, evaluation, winner logic)
-- Webhook/event ingest + idempotency + DLQ support
-- Alert routing + escalation policy + on-call schedule + delivery receipts
-- SLA breach tracking + MTTA/MTTR metrics
-- Org/team RBAC + audit logging + state backup/export
-- Onboarding and studio persistent state with optimistic concurrency controls
+- Competitor website analysis pipeline
+- Product scoring and winner detection
+- Supplier finding and offer feasibility checks
 
-## Phase Coverage
+### 3) Conversion Layer
 
-Implemented across current codebase:
+- Offer Engine (bundle, upsell, pricing strategy)
+- Product page generation pipeline
+- Experimentation engine (variant tests + winner promotion)
 
-- Phase 1: Core app + worker baseline
-- Phase 2: OAuth/campaign/api hardening foundations
-- Phase 3: Product/supplier/offer pipeline and ops primitives
-- Phase 4: Optimizer scheduling + platform safety rails + dashboard sync
-- Phase 5: Experimentation + event ingestion + rebalance flow
-- Phase 6: Enterprise onboarding + creative studio + revenue ops copilot
-- Phase 7: Analytics controls, org comparison, alert routing/escalation, SLA metrics
+### 4) Creative Ops Layer
+
+- Creative Studio pipeline board: concept -> variants -> schedule -> post
+- Workflow-ready architecture for Comfy-style automation and UGC generation
+- Scheduling and posting state machine
+
+### 5) Revenue Ops Layer
+
+- Campaign state sync + dashboard KPIs
+- Optimizer loop with guardrails
+- SLA timers (MTTA/MTTR), alert routing, escalation policies, receipts
+- Org/team analytics and anomaly detection tracks
+
+## Skills + Agents in This Workspace
+
+The repo/workspace includes skills and agent-oriented tooling to accelerate delivery:
+
+- `.marketingskills/` for reusable marketing/system instructions
+- Codex skills available in this environment include practical tracks for:
+  - Cloudflare/Vercel deploy
+  - Playwright automation/debugging
+  - Figma design-to-code
+  - security review/threat modeling
+  - Linear project management
+  - AI media generation helpers
+
+These are used as execution accelerators; core app logic stays in `apps/web` and `apps/worker`.
+
+## Integrations and External References
+
+Conversion Craft design references include:
+
+- Google Labs Pomelli (competitor intelligence direction)
+- nas.io patterns (community/creator monetization motions)
+- pagepilot.ai patterns (AI page generation and conversion copy)
+- Comfy-workflow style creative automation for ad/UGC production
+
+Operational target channels:
+
+- TikTok Ads
+- Meta Ads (Instagram/Facebook)
+- Shopify ecosystem
+
+## Repo Cleanup Performed
+
+- Consolidated work into one active repo: `Anwarito-lbd/conversioncraft`
+- Removed duplicate repositories from GitHub org/user scope (completed earlier)
+- Set this repository visibility to **public**
+- Removed exact duplicate legacy component files that were mirrored in active web app paths
+- Re-ran duplicate-content scan after cleanup (no duplicate tracked content remains)
 
 ## Local Development
 
@@ -92,13 +118,8 @@ Implemented across current codebase:
 ### Install
 
 ```bash
-# root
 npm install
-
-# web
 cd apps/web && npm install
-
-# worker
 cd ../worker
 python3 -m venv venv
 source venv/bin/activate
@@ -115,107 +136,34 @@ cp apps/worker/.env.example apps/worker/.env
 ### Run
 
 ```bash
-# Option A: root combined dev
+# terminal 1
+cd apps/worker
+source venv/bin/activate
+uvicorn main:app --reload --port 8000
+
+# terminal 2
+cd apps/web
 npm run dev
-
-# Option B: split terminals
-cd apps/worker && source venv/bin/activate && uvicorn main:app --reload --port 8000
-cd apps/web && npm run dev
 ```
 
-## Verification Commands
+## Key Env Groups (Worker)
 
-```bash
-# web
-npm run build --prefix apps/web -- --webpack
-
-# worker syntax check
-python3 -m py_compile apps/worker/main.py
-
-# worker tests
-cd apps/worker && source venv/bin/activate && pytest -q
-```
-
-## Key Environment Variables
-
-From `/Users/anwarito/Desktop/conversioncraft5/apps/worker/.env.example`:
-
-- Core: `DATABASE_URL`, `CORS_ORIGINS`
-- AI: `GOOGLE_API_KEY`, `REPLICATE_API_TOKEN`, `DEEPSEEK_API_KEY`
 - OAuth/Ads: `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `META_APP_ID`, `META_APP_SECRET`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`
-- Webhook/auth hardening: `SHOPIFY_WEBHOOK_SECRET`
+- Webhooks: `SHOPIFY_WEBHOOK_SECRET`, `META_WEBHOOK_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `TIKTOK_WEBHOOK_SECRET`
 - Billing: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
-- External ops: `CJ_API_TOKEN`, `CREATIFY_API_ID`, `CREATIFY_API_KEY`, `FLAIR_API_KEY`, `AUTODS_API_TOKEN`, `APIFY_TOKEN`
+- Core app/API: `DATABASE_URL`, `CORS_ORIGINS`
 
-From `/Users/anwarito/Desktop/conversioncraft5/apps/web/.env.example`:
+## Product Roadmap Snapshot
 
-- `NEXT_PUBLIC_API_URL`
+- Phase 1-4: core app, OAuth/campaign base, offer engine, optimizer scheduling
+- Phase 5: experimentation + real-time metric ingestion + traffic rebalance
+- Phase 6: enterprise onboarding + creative studio + revenue ops copilot
+- Phase 7: org analytics, alert routing/escalation, SLA metrics, anomaly handling
+- Next: deeper execution automation, attribution hardening, and enterprise controls
 
-## Merge + Provenance Artifacts
+## Source of Truth
 
-- `/Users/anwarito/Desktop/conversioncraft5/docs/MERGE_STATUS.md` – source repo merge status and blockers
-- `/Users/anwarito/Desktop/conversioncraft5/docs/BOOTSTRAP_REFERENCES_STATUS.md` – verified tool/repo bootstrap status
-- `/Users/anwarito/Desktop/conversioncraft5/scripts/import_sources.sh` – pull remaining repos after auth
-- `/Users/anwarito/Desktop/conversioncraft5/scripts/bootstrap_reference_repos.sh` – clone/verify full reference stack
-- `/Users/anwarito/Desktop/conversioncraft5/tools/references/` – local staging folder (kept clean; repopulate via script when needed)
+- Active product code: `apps/web` + `apps/worker`
+- Legacy artifacts: `legacy` (reference only unless explicitly revived)
+- Operational docs: `docs/`
 
-## Tools and Repos Explained (What They Do + How They Help)
-
-Full index: `/Users/anwarito/Desktop/conversioncraft5/docs/REFERENCE_REPOS.md`  
-Live clone/verification status: `/Users/anwarito/Desktop/conversioncraft5/docs/BOOTSTRAP_REFERENCES_STATUS.md`
-
-### Ecommerce / Dropshipping / Sourcing
-
-- `Automated-Dropshipping-Tool`: price/sentiment pattern ideas; useful for product scoring signals.
-- `HasData auto-ecommerce-scraper`: scraper design patterns for product intelligence ingestion.
-- `scrapfly-scrapers`: anti-blocking scraper examples; improves resilient extraction strategies.
-- `ecommercetools`: Python ecommerce utilities; useful for analytics and catalog transforms.
-- `MedusaJS`: commerce backend architecture reference (catalog/orders/admin patterns).
-- `ali-grabber`: supplier scraping ideas for procurement/sourcing enrichment.
-- `TikTok Creative Center` (URL): ad inspiration and format benchmarking source.
-
-### Community / Creator Monetization (Nas.io-style)
-
-- `Pensil`, `Forem`, `Discourse`: community platform patterns for engagement and retention loops.
-- `Standard Notes`, `Ghost`: paid subscriptions/content monetization architecture references.
-- `n8n`: workflow automation model for internal ops and event-driven orchestration.
-- `Chatwoot`: support inbox/CRM patterns for merchant success workflows.
-- `LangChain`: LLM tool-routing and chain orchestration reference.
-
-### AI Landing/Page Builder References
-
-- `302_coder_generator`, `aipage.dev`, `Ai-Website-Builder`: programmatic page generation concepts.
-- `nextjs-shopify`: storefront + commerce integration patterns in Next.js.
-- `Shopify-Product-Generator`: product copy/content generation workflows.
-- `Firecrawl`: website extraction pipeline for competitor/product intelligence.
-
-### Agent / Skills / MCP Stack
-
-- `awesome-claude-code-subagents`: subagent strategy catalog for scoped execution.
-- `claude-mem`: persistent memory model for cross-session continuity.
-- `vercel-labs/skills`, `skills-cli`: reusable skill packaging and invocation patterns.
-- `ccpm`, `get-shit-done`, `spec-kit`: planning/execution discipline for large phased delivery.
-- `mcp-servers`: production MCP server references for tool extensibility.
-- `claude-code-hooks`, `claude-code-best-practice`, `everything-claude-code`, `superpowers`, `claude-ads`: operations playbooks and productivity patterns.
-
-### Developer Toolchain References
-
-- `go-task`: standardized task runner patterns.
-- `mise`: runtime/version management strategy.
-- `lefthook`: pre-commit/push quality gate pattern.
-- `uv`, `ruff`: Python environment + lint/format baseline.
-- `biome`, `nx`: JS/TS quality and monorepo orchestration references.
-- `supabase-cli`, `stripe-cli`, `googleworkspace-cli`, `CLI-Anything`: platform/infra automation references.
-- `playwright-cli`, `notebooklm-py`: browser automation + research pipeline references.
-- `setup-uv`, `ruff-action`, `setup-task`, `mise-action`: CI standardization references.
-
-## Deployment Targets
-
-- Frontend: Vercel (`vercel.json`)
-- Worker/API: Render (`render.yaml`) or local Uvicorn
-
-## Notes
-
-- This repo keeps backward-compatible legacy assets in `/legacy` while maintaining active work in `/apps/web` and `/apps/worker`.
-- Private source repos can be imported once GitHub credentials are fixed (commands in merge docs/scripts).
-- Duplicate source staging clones were removed after validation to keep one clean working repo.
