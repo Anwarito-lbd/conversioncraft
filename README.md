@@ -69,6 +69,88 @@ conversioncraft/
 - SLA timers (MTTA/MTTR), alert routing, escalation policies, receipts
 - Org/team analytics and anomaly detection tracks
 
+## Phase-by-Phase Architecture
+
+| Phase | Frontend surface | Worker/API surface | Persistence |
+|---|---|---|---|
+| 1 | `/`, `/os`, `/finder` | `/api/analyze`, creative/gen endpoints, sourcing pipeline | JSON stores + in-memory flow state |
+| 2 | OAuth onboarding flow in `/os` and `/oauth/callback` | `/api/oauth/*`, `/api/tokens/*`, `/api/campaigns/create` | token store + idempotency + audit logs |
+| 3 | Offer/page generation workflow | `/api/offers/*`, `/api/store/build-*`, `/api/sourcing/*` | sku catalog + offer/attribution stores |
+| 4 | Launch + optimizer actions | `/api/campaigns/optimizer/*`, `/api/dashboard/realtime/*` | campaign store + optimizer run history |
+| 5 | Experiment controls | `/api/experiments/*`, webhook event ingest | experiment store + event metrics |
+| 6 | `/onboarding`, `/studio`, copilot UI in `/dashboard` | `/api/onboarding/state/*`, `/api/studio/state/*`, `/api/copilot/execute` | optimistic concurrency versioned state |
+| 7 | Enterprise analytics + routing/escalation panels in `/dashboard` | `/api/analytics/*`, `/api/alerts/*`, `/api/sla/*` | org/team RBAC + alert/sla stores |
+
+## API Contracts by Module (Worker)
+
+### Onboarding + Studio State
+
+- `GET /api/onboarding/state/{user_id}`  
+  Query: `org_id?`  
+  Response: `{ user_id, org_id, state, version, updated_at }`
+- `POST /api/onboarding/state/upsert`  
+  Body: `{ user_id, org_id?, expected_version?, state: OnboardingStateModel }`  
+  Returns `409` on version conflict with `{ detail: { error: "version_conflict", current_version } }`
+- `GET /api/studio/state/{user_id}`, `POST /api/studio/state/upsert` follow the same contract pattern with `StudioStateModel`.
+
+### OAuth + Campaign Execution
+
+- `POST /api/oauth/{platform}/connect`  
+  Body: `OAuthConnectRequest` (`user_id`, `redirect_uri`, `scopes?`, `shop?`, `org_id?`)  
+  Response: `{ platform, auth_url, state, nonce }`
+- `POST /api/oauth/{platform}/callback`  
+  Headers: optional `Idempotency-Key`  
+  Body: `OAuthCallbackRequest` (`user_id`, `code`, `state`, `nonce?`, `org_id?`)  
+  Response: `{ platform, connected, token_data }`
+- `POST /api/campaigns/create`  
+  Headers: optional `Idempotency-Key`  
+  Body: `CampaignCreateRequest`  
+  Response: `{ status: success|partial_success|failed, campaigns, errors }`
+- `POST /api/campaigns/optimizer/execute`  
+  Body: `OptimizerExecuteRequest`  
+  Response: `{ status, results, errors, skipped }`
+
+### Offer + Experimentation
+
+- `POST /api/offers/recommend-v2`  
+  Body: `OfferRecommendationV2Request` (`user_id`, `product`, `constraints?`, `experiment?`, `org_id?`)  
+  Response: product economics + UI contract (`pre_checkout_blocks`, `post_purchase_blocks`) + A/B payload.
+- `POST /api/experiments/create` / `POST /api/experiments/events` / `POST /api/experiments/{experiment_id}/evaluate`  
+  Bodies: `ExperimentCreateRequest`, `ExperimentEventRequest`, query-driven evaluate route.
+
+### Analytics + Alerting + SLA
+
+- `GET /api/analytics/enterprise/{org_id}`  
+  Query: `actor_user_id`, filters (`role_filter`, `user_filter`), SLA controls, forecast horizon.  
+  Response: `{ org, drilldowns, sla, forecast, controls }`
+- `POST /api/alerts/routing/{org_id}`  
+  Body: `AlertRoutingUpsertRequest` with strict `AlertRouteModel`.
+- `POST /api/alerts/escalation/{org_id}`  
+  Body: `EscalationPolicyUpsertRequest` with strict schema + optional JSON fields: `suppression_windows_json`, `on_call_schedule_json`  
+  Validation errors include line-level hints (`line`, `column`, `line_text`, `pointer`).
+- `GET /api/sla/metrics/{org_id}`  
+  Response: open/resolved counts + MTTA/MTTR + breach list.
+
+### New: Ops Kill-Switch Controls
+
+- `GET /api/ops/controls`  
+  Query: `actor_user_id`, optional `org_id`  
+  Response: `{ scope, org_id, controls }`
+- `POST /api/ops/controls`  
+  Body: `OpsControlsUpsertRequest` (`actor_user_id`, `org_id?`, `controls`)  
+  `controls` schema:
+  - `optimizer_execute_enabled: bool`
+  - `copilot_execute_enabled: bool`
+  - `autopilot_launch_enabled: bool`
+  - `max_optimizer_actions_per_run: int (1..500)`
+  - `max_copilot_actions_per_run: int (1..500)`
+
+Execution endpoints now enforce these controls:
+
+- `/api/campaigns/optimizer/execute`
+- `/api/copilot/execute`
+- `/api/autopilot/launch`
+
 ## Skills + Agents in This Workspace
 
 The repo/workspace includes skills and agent-oriented tooling to accelerate delivery:
@@ -152,6 +234,7 @@ npm run dev
 - Webhooks: `SHOPIFY_WEBHOOK_SECRET`, `META_WEBHOOK_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `TIKTOK_WEBHOOK_SECRET`
 - Billing: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - Core app/API: `DATABASE_URL`, `CORS_ORIGINS`
+- Optimizer guardrails: `MAX_BUDGET_INCREASE_PCT_DAILY_META`, `MAX_BUDGET_INCREASE_PCT_DAILY_TIKTOK`, `MIN_ROAS_GUARDRAIL_META`, `MIN_ROAS_GUARDRAIL_TIKTOK`
 
 ## Product Roadmap Snapshot
 
@@ -166,4 +249,4 @@ npm run dev
 - Active product code: `apps/web` + `apps/worker`
 - Legacy artifacts: `legacy` (reference only unless explicitly revived)
 - Operational docs: `docs/`
-
+- Full route/endpoint status matrix: `docs/FEATURE_MATRIX.md`

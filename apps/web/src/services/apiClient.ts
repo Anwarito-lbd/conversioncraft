@@ -123,6 +123,14 @@ export interface OnCallShift {
   enabled: boolean;
 }
 
+export interface OpsControls {
+  optimizer_execute_enabled: boolean;
+  copilot_execute_enabled: boolean;
+  autopilot_launch_enabled: boolean;
+  max_optimizer_actions_per_run: number;
+  max_copilot_actions_per_run: number;
+}
+
 export interface OfferRecommendationV2Response {
   product: { name: string; price: number; cost: number; margin: number };
   constraints_applied: { min_margin: number; max_discount_percent: number; min_inventory: number };
@@ -557,6 +565,36 @@ export const getSlaMetrics = async (params: {
     `${API_BASE_URL}/api/sla/metrics/${encodeURIComponent(params.orgId)}?${query.toString()}`,
   );
   if (!response.ok) throw new Error(`SLA metrics fetch failed: ${response.statusText}`);
+  return await response.json();
+};
+
+export const getOpsControls = async (params: {
+  actorUserId: string;
+  orgId?: string;
+}): Promise<{ scope: 'global' | 'org'; org_id?: string; controls: OpsControls }> => {
+  const query = new URLSearchParams();
+  query.set('actor_user_id', params.actorUserId);
+  if (params.orgId) query.set('org_id', params.orgId);
+  const response = await fetch(`${API_BASE_URL}/api/ops/controls?${query.toString()}`);
+  if (!response.ok) throw new Error(`Ops controls fetch failed: ${response.statusText}`);
+  return await response.json();
+};
+
+export const upsertOpsControls = async (params: {
+  actorUserId: string;
+  orgId?: string;
+  controls: OpsControls;
+}): Promise<{ status: string; row: Record<string, unknown> }> => {
+  const response = await fetch(`${API_BASE_URL}/api/ops/controls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      actor_user_id: params.actorUserId,
+      org_id: params.orgId,
+      controls: params.controls,
+    }),
+  });
+  if (!response.ok) throw new Error(`Ops controls upsert failed: ${response.statusText}`);
   return await response.json();
 };
 

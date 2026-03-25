@@ -34,6 +34,7 @@ from src.services.oauth_state_store import state_store
 from src.services.optimizer_executor import optimizer_executor
 from src.services.optimizer_scheduler import optimizer_scheduler
 from src.services.org_rbac_store import org_rbac_store
+from src.services.ops_control_store import ops_control_store
 from src.services.publisher import publisher_service
 from src.services.rate_limiter import rate_limiter
 from src.services.sla_breach_store import sla_breach_store
@@ -388,6 +389,21 @@ class OnCallShiftModel(BaseModel):
         if not self.target.strip() and not self.owner_user_id.strip():
             raise ValueError("Either target or owner_user_id is required.")
         return self
+
+
+class OpsControlsModel(BaseModel):
+    model_config = {"extra": "forbid"}
+    optimizer_execute_enabled: bool = True
+    copilot_execute_enabled: bool = True
+    autopilot_launch_enabled: bool = True
+    max_optimizer_actions_per_run: int = Field(default=50, ge=1, le=500)
+    max_copilot_actions_per_run: int = Field(default=50, ge=1, le=500)
+
+
+class OpsControlsUpsertRequest(BaseModel):
+    actor_user_id: str
+    org_id: Optional[str] = None
+    controls: OpsControlsModel
 
 
 EscalationPolicyModel.model_rebuild()
@@ -1419,6 +1435,28 @@ def dispatch_alerts(org_id: str, actor_user_id: str = Query(...)):
     }
 
 
+@app.get("/api/ops/controls")
+def get_ops_controls(actor_user_id: str = Query(...), org_id: Optional[str] = Query(default=None)):
+    _ensure_org_access(org_id, actor_user_id, "viewer")
+    return {
+        "scope": "org" if org_id else "global",
+        "org_id": org_id,
+        "controls": ops_control_store.get(org_id),
+    }
+
+
+@app.post("/api/ops/controls")
+def upsert_ops_controls(request: OpsControlsUpsertRequest):
+    _ensure_org_access(request.org_id, request.actor_user_id, "admin")
+    row = ops_control_store.upsert(request.actor_user_id, request.controls.model_dump(), request.org_id)
+    audit_logger.log(
+        "ops.controls_upsert",
+        request.actor_user_id,
+        {"org_id": request.org_id, "controls": request.controls.model_dump()},
+    )
+    return {"status": "ok", "row": row}
+
+
 @app.post("/api/analyze")
 def analyze(request: AnalyzeRequest):
     products = find_winning_products(request.niche)
@@ -1729,8 +1767,12 @@ def run_optimizer(request: OptimizerRequest):
 def execute_optimizer_actions(request: OptimizerExecuteRequest):
     _enforce_rate_limit("optimizer_execute", request.user_id, limit=20, window_seconds=60)
     _require_org_role(request.org_id, request.user_id, "marketer")
+    controls = ops_control_store.get(request.org_id)
+    if not bool(controls.get("optimizer_execute_enabled", True)):
+        raise HTTPException(status_code=423, detail="Optimizer execution is disabled by ops controls")
+    limited_actions = request.actions[: int(controls.get("max_optimizer_actions_per_run", 50) or 50)]
 
-    execution = optimizer_executor.execute_actions(request.user_id, request.actions)
+    execution = optimizer_executor.execute_actions(request.user_id, limited_actions)
 
     audit_logger.log(
         "optimizer.execute_actions",
@@ -1739,6 +1781,8 @@ def execute_optimizer_actions(request: OptimizerExecuteRequest):
             "applied": len(execution.get("results", [])),
             "errors": execution.get("errors", []),
             "skipped": execution.get("skipped", []),
+            "requested_actions": len(request.actions),
+            "executed_actions": len(limited_actions),
             "org_id": request.org_id,
         },
     )
@@ -1749,6 +1793,10 @@ def execute_optimizer_actions(request: OptimizerExecuteRequest):
 def execute_copilot_actions(request: CopilotExecuteRequest):
     _enforce_rate_limit("copilot_execute", request.user_id, limit=20, window_seconds=60)
     _ensure_org_access(request.org_id, request.user_id, "marketer")
+    controls = ops_control_store.get(request.org_id)
+    if not bool(controls.get("copilot_execute_enabled", True)):
+        raise HTTPException(status_code=423, detail="Copilot execution is disabled by ops controls")
+    capped_actions = request.actions[: int(controls.get("max_copilot_actions_per_run", 50) or 50)]
 
     min_roas = float(request.guardrails.get("min_roas", 1.2) or 1.2)
     max_scale_pct = float(request.guardrails.get("max_scale_pct", 20) or 20)
@@ -1757,7 +1805,7 @@ def execute_copilot_actions(request: CopilotExecuteRequest):
     safe_actions: List[Dict[str, Any]] = []
     skipped_guardrail: List[Dict[str, Any]] = []
 
-    for action in request.actions:
+    for action in capped_actions:
         action_type = str(action.get("action", ""))
         roas = float(action.get("roas", 0) or 0)
         ctr = float(action.get("ctr", 0) or 0)
@@ -3038,6 +3086,8 @@ def generate_bundles(request: BundleOffersRequest):
 
 
 class AutopilotRequest(BaseModel):
+    user_id: str = "system"
+    org_id: Optional[str] = None
     niche: str
     store_name: str = "My Store"
     store_url: str = "https://mystore.com"
@@ -3048,6 +3098,10 @@ class AutopilotRequest(BaseModel):
 @app.post("/api/autopilot/launch")
 def autopilot_launch(request: AutopilotRequest):
     """Full 13-step automated dropshipping pipeline."""
+    _ensure_org_access(request.org_id, request.user_id, "marketer")
+    controls = ops_control_store.get(request.org_id)
+    if not bool(controls.get("autopilot_launch_enabled", True)):
+        raise HTTPException(status_code=423, detail="Autopilot launch is disabled by ops controls")
     pipeline_steps = []
 
     # Step 1: Find winning products
@@ -3128,4 +3182,3 @@ def autopilot_launch(request: AutopilotRequest):
             "Install UpCart from Shopify App Store and paste upsell config",
         ],
     }
-
