@@ -1,287 +1,177 @@
-# Conversion Craft
+# ConversionCraft
 
-Conversion Craft is a SaaS **Growth OS for ecommerce**.
-It combines product intelligence, supplier discovery, page/offer generation, creative automation, paid-media execution, and revenue optimization in one system.
+**ConversionCraft** is a full-stack **Growth OS for ecommerce** that unifies product & supplier discovery, AI copywriting and 3D/UGC creative generation, conversion-focused landing page building, multi-channel paid-media execution, and guardrail-enforced revenue optimization in a single monorepo.
 
-## Product Goal
+> For the full phase-by-phase API contract reference originally shipped with the repo, see [`docs/README_DETAILED.md`](docs/README_DETAILED.md).
 
-Build a platform that helps ecommerce brands increase conversion and revenue by combining:
+---
 
-- Competitor intelligence (Pomelli-style analysis)
-- Winning product + supplier discovery (dropship intelligence patterns)
-- AI offer and landing page generation (PagePilot-style workflows)
-- Creative automation for ad concepts, variants, UGC, and scheduling
-- Direct execution to ad/social channels (Meta, TikTok, Instagram/Facebook)
-- Always-on optimization loops (pause losers, scale winners, rebalance traffic)
+## Visual Proof & Live Walkthrough
 
-Important: virality is not guaranteed. The platform is designed to maximize probability through strong creative, targeting, and iteration.
+### Interactive Walkthrough (Next.js 16 + Live FastAPI Worker)
 
-## What This Repo Contains
+Recorded via headless Chromium/Edge (Chrome DevTools Protocol) + FFmpeg walking through `/`, `/login` (live account registration against FastAPI `/api/auth/register`), `/os`, `/studio`, `/dashboard`, and `/finder`:
 
-This is the **single canonical repository** for Conversion Craft.
+![ConversionCraft Live Walkthrough](docs/images/walkthrough-preview.gif)
 
-```text
-conversioncraft/
-├── apps/
-│   ├── web/                    # Next.js frontend (Growth OS UI)
-│   └── worker/                 # FastAPI backend worker/API + automation engine
-├── packages/
-│   └── db/                     # Shared database schema (Prisma)
-├── docs/                       # Merge, bootstrap, and reference documentation
-├── scripts/                    # Operational scripts (bootstrap/import)
-├── tools/                      # Optional local staging for source/reference clones
-├── legacy/                     # Archived legacy assets (non-primary runtime)
-├── docker-compose.yml
-├── render.yaml
-└── vercel.json
+- Full HD Video: [`docs/images/walkthrough.mp4`](docs/images/walkthrough.mp4) (`484 KB`) · [`docs/images/walkthrough.webm`](docs/images/walkthrough.webm) (`1.03 MB`)
+
+### Desktop Views (`1440×900`)
+
+| Landing Page (`/`) | Workspace Auth (`/login`) | Product Finder Pro (`/finder`) |
+|---|---|---|
+| ![Home](docs/screenshots/home.png) | ![Login](docs/screenshots/login.png) | ![Finder](docs/screenshots/finder.png) |
+
+| Growth OS War Room (`/os`, Authenticated) | Command Center & Guardrails (`/dashboard`, Authenticated) |
+|---|---|
+| ![Growth OS](docs/screenshots/os.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
+### Mobile Views (`390×844`)
+
+| Mobile Landing (`/`) | Mobile Auth (`/login`) | Mobile Finder (`/finder`) |
+|---|---|---|
+| ![Home Mobile](docs/screenshots/home-mobile.png) | ![Login Mobile](docs/screenshots/login-mobile.png) | ![Finder Mobile](docs/screenshots/finder-mobile.png) |
+
+---
+
+## Architecture
+
+![ConversionCraft System Architecture & Verified Pipeline](docs/images/architecture-pipeline.png)
+
+```mermaid
+flowchart TB
+    subgraph Client["apps/web — Next.js 16 (React 19 + TypeScript + Tailwind v4)"]
+        UI_Pub["Public & Discovery<br/>/ · /login · /finder"]
+        UI_OS["Protected Growth OS<br/>/os · /onboarding · /studio · /dashboard · /oauth/callback"]
+        UI_3D["3D & Visualization<br/>ProductCanvas (@react-three/fiber) · Recharts · Framer Motion"]
+        UI_Pub --- UI_3D
+        UI_OS --- UI_3D
+    end
+
+    subgraph Worker["apps/worker — FastAPI 0.5.0 (Python 3.12 · 131 OpenAPI Paths)"]
+        MW["Session, CORS & RBAC Middleware<br/>Bearer Token · Preflight OPTIONS · Org Switching · Rate Limiter"]
+        API_Core["Core & Growth APIs<br/>/api/auth/* · /api/onboarding/* · /api/studio/* · /api/offers/* · /api/experiments/*"]
+        API_Ops["Campaigns, Analytics & Guardrails<br/>/api/campaigns/* · /api/analytics/* · /api/alerts/* · /api/sla/* · /api/ops/controls"]
+        Sched["APScheduler<br/>Optimizer & Token Rotation Loops"]
+        MW --> API_Core
+        MW --> API_Ops
+        Sched --> API_Ops
+    end
+
+    subgraph Data["Persistence & Security"]
+        PG["PostgreSQL 15 (Prisma Schema)<br/>12 Models: User, Organization, Campaign, Experiment, etc."]
+        SQLite["SQLite + Fernet Encryption<br/>secure_store.db (Auth Sessions & OAuth Blobs)"]
+        Redis["Redis (docker-compose.yml)"]
+    end
+
+    subgraph External["Channel & AI Integrations (Live + Mock-Capable Adapters)"]
+        Channels["Shopify · Meta Ads · TikTok Ads · Stripe"]
+        AI["Gemini (@google/genai) · DeepSeek · TripoSR · ComfyUI · Creatify · Higgsfield · Flair"]
+        Commerce["CJ Dropshipping · AutoDS · Mailchimp · Manus"]
+    end
+
+    Client -- "REST + Bearer Auth" --> MW
+    API_Core --> PG
+    API_Core --> SQLite
+    API_Ops --> PG
+    API_Ops --> SQLite
+    API_Core --> AI
+    API_Core --> Commerce
+    API_Ops --> Channels
 ```
 
-## Current Feature Scope
+---
 
-Protected app surfaces (`/os`, `/dashboard`, `/onboarding`, `/studio`) expose org/session controls directly in the header (org switch + logout).
+## Tools, Skills, AI Models & Engineering Stack
 
-### 1) Channel + Auth Layer
+Every tool, model, and library listed below is directly verified in the repository source and dependency manifests:
 
-- OAuth/connect scaffolding for Shopify, Meta, TikTok
-- Token storage, rotation hooks, audit logging
-- Webhook verification and idempotency guards
-- Real auth/session layer (email/password + bearer session token)
-- Org-aware session switching and RBAC enforcement on protected `/api/*` routes
-- DB-backed encrypted credential/session store (`secure_store.db`)
+### AI Models & Generative Media Pipelines
+- **Google Gemini SDK (`@google/genai` `^1.30.0` in `apps/web/src/services/geminiService.ts`)**:
+  - `gemini-3-pro-preview` (with `googleSearch` grounding and `thinkingBudget`): niche product discovery, competitor battlefield analysis, Meta/TikTok ad library research, supplier matching, review synthesis, market simulation, trend genesis, and arbitrage opportunity scanning.
+  - `gemini-2.5-flash` & `gemini-2.5-flash-image`: fast social caption generation, landing-page assistant chat, and image-to-image marketing creative editing (`Modality.IMAGE`).
+  - `imagen-4.0-generate-001`: commercial product mockup and studio photography generation.
+  - `veo-3.1-fast-generate-preview`: short-form product video and ad scene generation.
+- **Worker AI Agents (`google-generativeai` in `apps/worker/src/agents/`)**:
+  - `copywriter.py` and `director.py` invoke `gemini-1.5-pro-latest` for server-side copywriting and storyboard generation; `producer.py` and `model_generator.py` orchestrate Replicate (`replicate`) and 3D model pipelines.
+- **DeepSeek (`apps/worker/src/services/deepseek_service.py` & `chatbot_service.py`)**: OpenAI-compatible `api.deepseek.com/v1` adapter for product descriptions, ad copy, SEO content, and the landing-page concierge chatbot (with deterministic template fallbacks when unconfigured).
+- **Specialized Creative & Sourcing Adapters (`apps/worker/src/services/`)**: Mock-capable wrappers for `creatify_service.py` (AI UGC video), `flair_service.py` (product staging & background removal), `triposr_service.py` (3D mesh synthesis), `higgsfield_service.py`, `cj_service.py` (CJ Dropshipping), `autods_service.py` (AutoDS fulfillment), `mailchimp_service.py`, `manus_service.py`, `upcart_service.py`, and `stripe_service.py`.
 
-### 2) Intelligence Layer
+### Frontend Application (`apps/web/package.json`)
+- **Framework & Language**: `next` (`16.0.4`, App Router + Turbopack with scoped `turbopack.root`), `react` (`19.2.0`), `react-dom` (`19.2.0`), `typescript` (`^5`).
+- **UI, Motion & Styling**: `tailwindcss` (`^4`), `@tailwindcss/postcss` (`^4`), `tailwindcss-animate` (`^1.0.7`), `tailwind-merge` (`^3.4.0`), `clsx` (`^2.1.1`), `@radix-ui/react-dialog` (`^1.1.15`), `lucide-react` (`^0.554.0`), `framer-motion` (`^12.33.0`), `react-markdown` (`^10.1.0`).
+- **3D & Analytics Visualization**: `three` (`^0.181.2`), `@react-three/fiber` (`^9.5.0`), `@react-three/drei` (`^10.7.7`) powering `ProductCanvas`, plus `recharts` (`^3.7.0`) for trend and performance charts.
+- **Code Quality**: `eslint` (`^9`) + `eslint-config-next` (`16.0.4`).
 
-- Competitor website analysis pipeline
-- Product scoring and winner detection
-- Supplier finding and offer feasibility checks
+### Backend Worker, API Contract & Security (`apps/worker`)
+- **API & Runtime**: `fastapi` (`ConversionCraft Worker API v0.5.0`), `uvicorn`, `pydantic`, `python-multipart`, `requests`, `python-dotenv`.
+- **OpenAPI Contract**: Machine-verified `131` OpenAPI paths (`135` operations) exported in [`docs/openapi.json`](docs/openapi.json) and summarized in [`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md).
+- **Auth, Encryption & Multi-Tenant RBAC**: `AuthService` (`apps/worker/src/services/auth_service.py`) persists users and Bearer sessions in SQLite (`secure_store.db`), hashes passwords with `PBKDF2-SHA256` (210,000 iterations), and encrypts session/OAuth payloads with `cryptography.fernet.Fernet`. `inject_session_context` middleware enforces Bearer auth across `/api/*` while passing `OPTIONS` CORS preflights to `CORSMiddleware`.
+- **Reliability & Scheduling**: `apscheduler` for background optimizer execution and OAuth token rotation, paired with `rate_limiter.py`, `idempotency_store.py`, `dead_letter_queue.py`, `audit_logger.py`, optimistic concurrency (`409` `version_conflict`), and `/api/ops/controls` kill-switches.
 
-### 3) Conversion Layer
+### Database, Infrastructure & QA Tooling
+- **Database & Cache**: `prisma` + `packages/db/schema.prisma` (**12 PostgreSQL models**), `docker-compose.yml` (`postgres:15-alpine`, `redis:alpine`).
+- **CI & Verification**: `.github/workflows/ci.yml` enforcing `npx tsc --noEmit`, `npm run lint`, `npm run build`, FastAPI import check, and `pytest tests/ -v --tb=short`; headless Chromium/Edge via Chrome DevTools Protocol (CDP) + FFmpeg for desktop (`1440×900`) and mobile (`390×844`) screenshot and walkthrough video capture.
+- **Monorepo & Deployment**: `concurrently` (`^8.2.2`), `vercel.json` (`@vercel/next`), `render.yaml` (`uvicorn main:app`).
 
-- Offer Engine (bundle, upsell, pricing strategy)
-- Product page generation pipeline
-- Experimentation engine (variant tests + winner promotion)
+---
 
-### 4) Creative Ops Layer
+## Verified Feature Breakdown & Proof
 
-- Creative Studio pipeline board: concept -> variants -> schedule -> post
-- Workflow-ready architecture for Comfy-style automation and UGC generation
-- Scheduling and posting state machine
+All checks below were executed directly against this branch (`docs/portfolio-demo`) without private production credentials:
 
-### 5) Revenue Ops Layer
-
-- Campaign state sync + dashboard KPIs
-- Optimizer loop with guardrails
-- SLA timers (MTTA/MTTR), alert routing, escalation policies, receipts
-- Org/team analytics and anomaly detection tracks
-
-## Phase-by-Phase Architecture
-
-| Phase | Frontend surface | Worker/API surface | Persistence |
+| Area | Command / Source | Observed Result | Notes |
 |---|---|---|---|
-| 1 | `/`, `/os`, `/finder` | `/api/analyze`, creative/gen endpoints, sourcing pipeline | JSON stores + in-memory flow state |
-| 2 | OAuth onboarding flow in `/os` and `/oauth/callback` | `/api/oauth/*`, `/api/tokens/*`, `/api/campaigns/create` | token store + idempotency + audit logs |
-| 3 | Offer/page generation workflow | `/api/offers/*`, `/api/store/build-*`, `/api/sourcing/*` | sku catalog + offer/attribution stores |
-| 4 | Launch + optimizer actions | `/api/campaigns/optimizer/*`, `/api/dashboard/realtime/*` | campaign store + optimizer run history |
-| 5 | Experiment controls | `/api/experiments/*`, webhook event ingest | experiment store + event metrics |
-| 6 | `/onboarding`, `/studio`, copilot UI in `/dashboard` | `/api/onboarding/state/*`, `/api/studio/state/*`, `/api/copilot/execute` | optimistic concurrency versioned state |
-| 7 | Enterprise analytics + routing/escalation panels in `/dashboard` | `/api/analytics/*`, `/api/alerts/*`, `/api/sla/*` | org/team RBAC + alert/sla stores |
+| **Frontend Typecheck** | `cd apps/web && npx tsc --noEmit` | **PASS** (`exit 0`, `0` errors) | Strict TypeScript check across all `.ts`/`.tsx` files |
+| **Frontend Linter** | `cd apps/web && npm run lint` | **PASS** (`exit 0`, `0` errors) | `3` `@next/next/no-img-element` warnings for dynamic external supplier images |
+| **Frontend Production Build** | `cd apps/web && npm run build` | **PASS** (`exit 0`, `10.6s` compile, `11/11` static pages) | Built `/`, `/_not-found`, `/dashboard`, `/finder`, `/login`, `/oauth/callback`, `/onboarding`, `/os`, `/studio` |
+| **Worker App Import & OpenAPI** | `python -c "from main import app; print('Import OK')"` | **PASS** (`Import OK`) | FastAPI `ConversionCraft Worker API` `v0.5.0`: **131 paths**, **135 operations**, [`docs/openapi.json`](docs/openapi.json) synced |
+| **Worker Test Suite** | `pytest tests/ -v --tb=short` | **18 passed, 0 failed** (`6.34s`) | Covers `/health`, unauthenticated `401`, CORS `OPTIONS` preflight, auth register/login/session/logout lifecycle, and all 14 `/api/*` endpoints |
+| **Database Schema** | `packages/db/schema.prisma` | **12 Prisma models** | `User`, `Organization`, `OrgMember`, `OAuthToken`, `Campaign`, `Experiment`, `AttributionEvent`, `OnboardingState`, `StudioState`, `AuditLog`, `AlertRoute`, `AnalyticsPreferences` |
 
-## API Contracts by Module (Worker)
+---
 
-### Auth + Session
-
-- `POST /api/auth/register`  
-  Body: `{ email, password, name?, org_name?, org_id? }`  
-  Response: `{ token, session, user, org }`
-- `POST /api/auth/login`  
-  Body: `{ email, password, org_id? }`  
-  Response: `{ token, session, user, org, orgs }`
-- `GET /api/auth/session`  
-  Header: `Authorization: Bearer <token>`  
-  Response: `{ session, user, org, orgs }`
-- `POST /api/auth/switch-org`  
-  Header: `Authorization: Bearer <token>`  
-  Body: `{ org_id }`  
-  Response: `{ token, session, org }`
-- `POST /api/auth/logout`  
-  Header: `Authorization: Bearer <token>`  
-  Response: `{ status, revoked }`
-- `GET /api/status/routes`  
-  Header: `Authorization: Bearer <token>`  
-  Response: full route inventory with `{ path, methods, module, auth_required, public_api }`
-
-### Onboarding + Studio State
-
-- `GET /api/onboarding/state/{user_id}`  
-  Query: `org_id?`  
-  Response: `{ user_id, org_id, state, version, updated_at }`
-- `POST /api/onboarding/state/upsert`  
-  Body: `{ user_id, org_id?, expected_version?, state: OnboardingStateModel }`  
-  Returns `409` on version conflict with `{ detail: { error: "version_conflict", current_version } }`
-- `GET /api/studio/state/{user_id}`, `POST /api/studio/state/upsert` follow the same contract pattern with `StudioStateModel`.
-
-### OAuth + Campaign Execution
-
-- `POST /api/oauth/{platform}/connect`  
-  Body: `OAuthConnectRequest` (`user_id`, `redirect_uri`, `scopes?`, `shop?`, `org_id?`)  
-  Response: `{ platform, auth_url, state, nonce }`
-- `POST /api/oauth/{platform}/callback`  
-  Headers: optional `Idempotency-Key`  
-  Body: `OAuthCallbackRequest` (`user_id`, `code`, `state`, `nonce?`, `org_id?`)  
-  Response: `{ platform, connected, token_data }`
-- `POST /api/campaigns/create`  
-  Headers: optional `Idempotency-Key`  
-  Body: `CampaignCreateRequest`  
-  Response: `{ status: success|partial_success|failed, campaigns, errors }`
-- `POST /api/campaigns/optimizer/execute`  
-  Body: `OptimizerExecuteRequest`  
-  Response: `{ status, results, errors, skipped }`
-
-### Offer + Experimentation
-
-- `POST /api/offers/recommend-v2`  
-  Body: `OfferRecommendationV2Request` (`user_id`, `product`, `constraints?`, `experiment?`, `org_id?`)  
-  Response: product economics + UI contract (`pre_checkout_blocks`, `post_purchase_blocks`) + A/B payload.
-- `POST /api/experiments/create` / `POST /api/experiments/events` / `POST /api/experiments/{experiment_id}/evaluate`  
-  Bodies: `ExperimentCreateRequest`, `ExperimentEventRequest`, query-driven evaluate route.
-
-### Analytics + Alerting + SLA
-
-- `GET /api/analytics/enterprise/{org_id}`  
-  Query: `actor_user_id`, filters (`role_filter`, `user_filter`), SLA controls, forecast horizon.  
-  Response: `{ org, drilldowns, sla, forecast, controls }`
-- `POST /api/alerts/routing/{org_id}`  
-  Body: `AlertRoutingUpsertRequest` with strict `AlertRouteModel`.
-- `POST /api/alerts/escalation/{org_id}`  
-  Body: `EscalationPolicyUpsertRequest` with strict schema + optional JSON fields: `suppression_windows_json`, `on_call_schedule_json`  
-  Validation errors include line-level hints (`line`, `column`, `line_text`, `pointer`).
-- `GET /api/sla/metrics/{org_id}`  
-  Response: open/resolved counts + MTTA/MTTR + breach list.
-
-### New: Ops Kill-Switch Controls
-
-- `GET /api/ops/controls`  
-  Query: `actor_user_id`, optional `org_id`  
-  Response: `{ scope, org_id, controls }`
-- `POST /api/ops/controls`  
-  Body: `OpsControlsUpsertRequest` (`actor_user_id`, `org_id?`, `controls`)  
-  `controls` schema:
-  - `optimizer_execute_enabled: bool`
-  - `copilot_execute_enabled: bool`
-  - `autopilot_launch_enabled: bool`
-  - `max_optimizer_actions_per_run: int (1..500)`
-  - `max_copilot_actions_per_run: int (1..500)`
-
-Execution endpoints now enforce these controls:
-
-- `/api/campaigns/optimizer/execute`
-- `/api/copilot/execute`
-- `/api/autopilot/launch`
-
-### New: Full Route Status Map
-
-- `GET /api/status/routes`  
-  Header: `Authorization: Bearer <token>`  
-  Response: canonical method/path/module/auth-requirement map for all worker routes.
-
-## Skills + Agents in This Workspace
-
-The repo/workspace includes skills and agent-oriented tooling to accelerate delivery:
-
-- `.marketingskills/` for reusable marketing/system instructions
-- Codex skills available in this environment include practical tracks for:
-  - Cloudflare/Vercel deploy
-  - Playwright automation/debugging
-  - Figma design-to-code
-  - security review/threat modeling
-  - Linear project management
-  - AI media generation helpers
-
-These are used as execution accelerators; core app logic stays in `apps/web` and `apps/worker`.
-
-## Integrations and External References
-
-Conversion Craft design references include:
-
-- Google Labs Pomelli (competitor intelligence direction)
-- nas.io patterns (community/creator monetization motions)
-- pagepilot.ai patterns (AI page generation and conversion copy)
-- Comfy-workflow style creative automation for ad/UGC production
-
-Operational target channels:
-
-- TikTok Ads
-- Meta Ads (Instagram/Facebook)
-- Shopify ecosystem
-
-## Repo Cleanup Performed
-
-- Consolidated work into one active repo: `Anwarito-lbd/conversioncraft`
-- Removed duplicate repositories from GitHub org/user scope (completed earlier)
-- Set this repository visibility to **public**
-- Removed exact duplicate legacy component files that were mirrored in active web app paths
-- Re-ran duplicate-content scan after cleanup (no duplicate tracked content remains)
-
-## Local Development
+## Local Setup
 
 ### Prerequisites
-
-- Node.js 20+
+- Node.js 20+ and npm
 - Python 3.12+
-- npm
+- Docker (optional, for local PostgreSQL + Redis)
 
-### Install
-
+### 1. Environment Variables
 ```bash
-npm install
-cd apps/web && npm install
-cd ../worker
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Environment
-
-```bash
-cp apps/web/.env.example apps/web/.env.local
 cp apps/worker/.env.example apps/worker/.env
 ```
+*(Configure `DATABASE_URL`, `CORS_ORIGINS`, and optional provider keys in `apps/worker/.env`. All mock-capable endpoints work locally without external paid API keys.)*
 
-### Run
-
+### 2. Install & Run
 ```bash
-# terminal 1
-cd apps/worker
-source venv/bin/activate
-uvicorn main:app --reload --port 8000
+# Optional: start Postgres + Redis
+docker compose up -d
 
-# terminal 2
+# Root monorepo scripts
+npm install
+
+# Frontend
 cd apps/web
-npm run dev
+npm install
+npm run dev          # http://localhost:3000
+
+# Backend worker (in a second terminal)
+cd apps/worker
+python -m venv venv
+# Windows: .\venv\Scripts\activate | macOS/Linux: source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
-## Key Env Groups (Worker)
+---
 
-- OAuth/Ads: `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `META_APP_ID`, `META_APP_SECRET`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`
-- Webhooks: `SHOPIFY_WEBHOOK_SECRET`, `META_WEBHOOK_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `TIKTOK_WEBHOOK_SECRET`
-- Billing: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
-- Core app/API: `DATABASE_URL`, `CORS_ORIGINS`
-- Sessions: `AUTH_SESSION_TTL_SECONDS`
-- Secure storage: `SECURE_STORE_DB_PATH`, `STORE_ENCRYPTION_KEY`
-- Optimizer guardrails: `MAX_BUDGET_INCREASE_PCT_DAILY_META`, `MAX_BUDGET_INCREASE_PCT_DAILY_TIKTOK`, `MIN_ROAS_GUARDRAIL_META`, `MIN_ROAS_GUARDRAIL_TIKTOK`
+## Documentation Index
 
-## Product Roadmap Snapshot
-
-- Phase 1-4: core app, OAuth/campaign base, offer engine, optimizer scheduling
-- Phase 5: experimentation + real-time metric ingestion + traffic rebalance
-- Phase 6: enterprise onboarding + creative studio + revenue ops copilot
-- Phase 7: org analytics, alert routing/escalation, SLA metrics, anomaly handling
-- Next: deeper execution automation, attribution hardening, and enterprise controls
-
-## Source of Truth
-
-- Active product code: `apps/web` + `apps/worker`
-- Legacy artifacts: `legacy` (reference only unless explicitly revived)
-- Operational docs: `docs/`
-- Full route/endpoint status matrix: `docs/FEATURE_MATRIX.md`
+- [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md) — Engineering case study (problem, architecture decisions, security/CORS fixes, and honest gaps)
+- [`docs/PROOF_OF_WORK.md`](docs/PROOF_OF_WORK.md) — Full post-edit verification log, command outputs, and visual artifact inventory
+- [`docs/VERIFIED_CHECKS.md`](docs/VERIFIED_CHECKS.md) — Concise check matrix and observed command transcripts
+- [`docs/README_DETAILED.md`](docs/README_DETAILED.md) — Full preserved API contract & phase-by-phase reference
+- [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) — Endpoint-by-endpoint `live` / `mock-capable` / `scaffold` status matrix
+- [`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md) — Machine-generated FastAPI OpenAPI route inventory (131 paths)

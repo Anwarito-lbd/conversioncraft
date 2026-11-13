@@ -220,13 +220,27 @@ export interface LandingPageData {
   rotationImages?: string[];
 }
 
+export interface ComfyUIWorkflowNode {
+  id: number;
+  type: string;
+  widgets_values?: string[];
+}
+
+export interface ComfyUIWorkflow {
+  nodes: ComfyUIWorkflowNode[];
+  meta: {
+    script_hook: string;
+    generated_by: string;
+  };
+}
+
 export interface AutoPilotResult {
   product: WinningProduct;
-  suppliers: any[]; // Simplified for brevity in this context
+  suppliers: Supplier[];
   landingPage: LandingPageData;
   adScript: AdScript;
   marketingImage: string;
-  comfyUiWorkflow: any;
+  comfyUiWorkflow: ComfyUIWorkflow;
   optimizationPlan: string;
 }
 
@@ -260,7 +274,7 @@ export interface IdeaItem {
   snippet: string;
   module: string;
   link?: string;
-  data?: any;
+  data?: WinningProduct | Record<string, unknown>;
   date: string;
   isPinned?: boolean;
 }

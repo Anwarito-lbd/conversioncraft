@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Globe, ShoppingBag, ShoppingCart } from 'lucide-react';
+import { Globe } from 'lucide-react';
 
 interface SignalsCardProps {
     tiktok: string[];

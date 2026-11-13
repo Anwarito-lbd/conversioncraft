@@ -15,7 +15,7 @@ const WhyItWinsCard: React.FC<WhyItWinsCardProps> = ({ reason, benefits, angles 
             <Trophy className="text-amber-400" size={20} /> Why It Wins
         </h3>
         <p className="text-slate-300 text-sm mb-6 leading-relaxed border-l-2 border-amber-500 pl-4">
-            "{reason}"
+            &ldquo;{reason}&rdquo;
         </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

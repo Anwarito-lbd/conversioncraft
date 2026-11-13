@@ -130,7 +130,7 @@ async def inject_session_context(request: Request, call_next):
     request.state.session = session
     ctx = _request_session.set(session)
     try:
-        if _requires_session_for_path(request.url.path) and not session:
+        if request.method != "OPTIONS" and _requires_session_for_path(request.url.path) and not session:
             return JSONResponse(status_code=401, content={"detail": "Authentication required"})
         return await call_next(request)
     finally:

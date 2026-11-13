@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { TrendingUp, BarChart3 } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 
 interface MarketPotentialCardProps {
     potentialText: string;
