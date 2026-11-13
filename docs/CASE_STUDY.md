@@ -1,53 +1,55 @@
-# Case Study: Conversion Craft — Building an AI-Native Ecommerce Growth OS
+# Case Study: Building ConversionCraft — An End-to-End Ecommerce Growth OS
 
 **Author:** Anwar  
-**Role:** Solo Full-Stack & AI Systems Engineer  
-**Stack:** Next.js 16, React 19, TypeScript, Tailwind CSS v4, FastAPI, Python 3.12, Prisma (PostgreSQL), SQLite + Fernet Encryption, APScheduler
+**Repository:** `Anwarito-lbd/conversioncraft`  
+**Stack:** Next.js 16, React 19, TypeScript, Tailwind CSS v4, Three.js (`@react-three/fiber`), FastAPI (`0.5.0`), Prisma (PostgreSQL), SQLite + Fernet Encryption, APScheduler
 
 ---
 
-## The Problem
+## 1. The Problem
 
-Launching and scaling an ecommerce or dropshipping product typically requires stitching together half a dozen disconnected tools: one for product research, another for supplier sourcing, a landing page builder, a copywriting tool, a creative/video generator, and separate ad managers for Meta and TikTok. Even after launch, operators have to manually watch ROAS, pause losing ad sets, scale winners within safe budget caps, and manage alerts when attribution or sync pipelines drift.
+Launching and scaling an ecommerce or dropshipping product typically requires stitching together half a dozen disconnected tools: a product research database, a supplier portal, a copywriter, a 3D/UGC creative pipeline, a landing-page builder, ad-platform dashboards (Meta and TikTok), and spreadsheets to track ROAS and kill losing ad sets.
 
-I built **Conversion Craft** to unify that entire lifecycle—from niche discovery to automated campaign optimization and revenue ops governance—into a single monorepo platform.
+I built **ConversionCraft** to consolidate that entire lifecycle into one **Growth OS**—moving from niche discovery and supplier sourcing to offer generation, 3D/UGC creative production, campaign execution, and guardrail-enforced revenue operations.
 
-## Architecture & Engineering Decisions
+---
 
-### 1. Decoupled Monorepo: Next.js 16 Control Plane + FastAPI Automation Worker
-I split the system into two primary runtimes:
-- **`apps/web` (Next.js 16 + React 19 + TypeScript):** Handles the marketing landing page (`/`), workspace authentication (`/login`), the 6-step Growth OS flow (`/os`), Product Finder Pro (`/finder`), Enterprise Onboarding (`/onboarding`), Creative Studio Kanban (`/studio`), and the Revenue Ops & SLA Dashboard (`/dashboard`). It also includes interactive 3D product canvas rendering via Three.js (`@react-three/fiber` / `@react-three/drei`) and charts via `recharts`.
-- **`apps/worker` (FastAPI + APScheduler):** Exposes **131 OpenAPI-documented paths** across auth/sessions, OAuth token management, sourcing, offer optimization, A/B experimentation, campaign execution, webhook ingestion, enterprise analytics, SLA tracking, and ops kill-switches.
+## 2. Architecture & Key Engineering Decisions
 
-### 2. Fail-Safe, Mock-Capable Provider Integrations
-An ecommerce automation platform touches a lot of external APIs: Shopify, Meta Ads, TikTok Ads, Stripe, CJ Dropshipping, Apify, DeepSeek, Google Gemini, Replicate/TripoSR, Creatify, Flair, Higgsfield, Mailchimp, and Manus. Rather than letting missing API keys crash local development or demos, I designed the worker services so integrations are **mock-capable**: when provider credentials are configured they call the real APIs; when absent in local/dev, they return deterministic mock payloads so every workflow remains testable.
+### Monorepo Split: Next.js 16 Frontend + FastAPI Worker (`apps/web` & `apps/worker`)
+I separated the interactive UI (`apps/web`) from the orchestration and integration engine (`apps/worker`):
+- **Frontend (`apps/web`)**: Built with Next.js 16 (App Router + Turbopack), React 19, Framer Motion, Recharts, and `@react-three/fiber` / `@react-three/drei` (`ProductCanvas`) for interactive 3D product previews. Protected routes (`/os`, `/onboarding`, `/studio`, `/dashboard`) share a `SessionControls` header for organization switching and logout.
+- **Backend Worker (`apps/worker`)**: A FastAPI service (`ConversionCraft Worker API v0.5.0`) exposing **131 OpenAPI paths (135 operations)** alongside an `APScheduler` lifespan loop for background optimization and token rotation.
 
-### 3. Security, RBAC, and Encrypted Session/Token Storage
-In commit `7b86c8f`, I replaced placeholder auth with a real session and RBAC layer:
-- **Middleware enforcement (`inject_session_context`):** Every `/api/*` route (outside explicit public auth/webhook endpoints) requires a valid `Authorization: Bearer <token>` session.
-- **Encrypted local store (`secure_store.db`):** `AuthService` and `TokenStore` use SQLite paired with `cryptography.fernet.Fernet` encryption (keyed via `STORE_ENCRYPTION_KEY` or a local key file) to store users, hashed session tokens, and OAuth tokens.
-- **Multi-org RBAC:** Users can belong to multiple organizations with roles (`owner`, `admin`, `marketer`, `analyst`, `viewer`) and switch active org context via `/api/auth/switch-org`.
+### Dual Persistence: Prisma PostgreSQL + Encrypted Local `secure_store.db`
+- `packages/db/schema.prisma` defines **12 relational models** (`User`, `Organization`, `OrgMember`, `OAuthToken`, `Campaign`, `Experiment`, `AttributionEvent`, `OnboardingState`, `StudioState`, `AuditLog`, `AlertRoute`, `AnalyticsPreferences`).
+- For auth sessions, user credentials, and sensitive OAuth token blobs, `AuthService` (`apps/worker/src/services/auth_service.py`) uses a thread-safe SQLite store (`secure_store.db`) encrypted at rest with `cryptography.fernet.Fernet`, automatically migrating legacy JSON stores on startup.
 
-### 4. Guardrails & Ops Kill-Switches
-Autonomous ad spend optimization is dangerous without hard limits. I built two layers of protection:
-- **Optimizer Executor Guardrails (`OptimizerExecutor`):** Enforces per-platform minimum ROAS thresholds (`MIN_ROAS_GUARDRAIL_META`, `MIN_ROAS_GUARDRAIL_TIKTOK`) and daily budget increase caps (`MAX_BUDGET_INCREASE_PCT_DAILY_*`) before executing scale/pause actions.
-- **Ops Kill-Switches (`OpsControlStore`):** Global and per-org runtime switches (`optimizer_execute_enabled`, `copilot_execute_enabled`, `autopilot_launch_enabled`, plus `max_optimizer_actions_per_run` and `max_copilot_actions_per_run`) enforced directly on `/api/campaigns/optimizer/execute`, `/api/copilot/execute`, and `/api/autopilot/launch`.
+### Optimistic Concurrency & Ops Guardrails
+- **Versioned State**: `/api/onboarding/state/upsert` and `/api/studio/state/upsert` enforce `expected_version` checks and return `409` (`version_conflict`) if two tabs or collaborators overwrite each other's state.
+- **Safety Kill-Switches**: Because automated ad-budget scaling can burn spend quickly if misconfigured, `/api/ops/controls` exposes per-org and global toggles (`optimizer_execute_enabled`, `copilot_execute_enabled`, `autopilot_launch_enabled`) plus hard action caps (`1..500`), enforced directly in `/api/campaigns/optimizer/execute`, `/api/copilot/execute`, and `/api/autopilot/launch`.
+- **Line-Level Policy Validation**: Escalation policies (`/api/alerts/escalation/{org_id}`) validate `suppression_windows_json` and `on_call_schedule_json` and return `line`, `column`, `line_text`, and `pointer` hints so operators can jump straight to syntax errors in the dashboard UI.
 
-### 5. Optimistic Concurrency & Strict Validation
-For collaborative state (`/onboarding` and `/studio`), state upserts support `expected_version` checks and return `409 version_conflict` on stale writes. For enterprise alert escalation policies, JSON fields (`suppression_windows_json`, `on_call_schedule_json`) return line- and column-level error hints so operators can jump straight to syntax issues in the UI.
+### Mock-Capable Integration Adapters
+Every external integration (Stripe, DeepSeek, CJ Dropshipping, AutoDS, Creatify, Flair, TripoSR, Higgsfield, Mailchimp, Manus) is wrapped in a dedicated service module under `apps/worker/src/services/` that executes live API calls when credentials are configured and falls back cleanly to deterministic mock responses in local/dev environments.
 
-## Verification & Honest Gaps
+---
 
-During portfolio verification on this branch:
-- **TypeScript (`npx tsc --noEmit`)** passed with **0 errors**.
-- **FastAPI Worker** imported cleanly and exported **131 OpenAPI paths** (`docs/openapi.json`).
-- **Next.js Dev Server** rendered `/`, `/login`, and `/finder` cleanly (screenshots captured in `docs/screenshots/`).
-- **Known Gaps Found:**
-  1. **Worker `pytest` suite (`tests/test_health.py`):** `/health` passes (`200`), but the 14 `/api/*` tests currently fail with `401 Unauthorized` because the test suite was written prior to the `7b86c8f` session auth middleware and needs a test fixture that registers/logs in first.
-  2. **ESLint (`npm run lint`):** Reports 11 errors (unescaped quotes in two finder components and `no-explicit-any` in `geminiService.ts` / `types/index.ts`) and 12 warnings.
-  3. **Next.js Turbopack Build on Windows:** `next build` compiled successfully in `14.3s`, then hit an `ENOENT` on `.next/server/pages-manifest.json` during page data collection due to the monorepo workspace root lockfile detection.
-  4. **Local Persistence vs. Prisma:** `packages/db/schema.prisma` defines the target PostgreSQL schema, while the current worker runtime persists state in SQLite (`secure_store.db`) and JSON files under `apps/worker/data/` for zero-dependency local execution.
+## 3. Verification & Honest Engineering Gaps
 
-## Key Takeaways
+When preparing this repository for portfolio review (without private production API keys), I ran the full local verification suite and recorded exact outcomes:
 
-Consolidating multiple prototype repos into `conversioncraft` taught me the value of strict API contracts (`/api/status/routes` + OpenAPI), fail-safe provider wrappers, and building operational safety (RBAC, kill-switches, optimistic concurrency, DLQ/audit logs) early—even in an AI-first product.
+- **TypeScript (`cd apps/web && npx tsc --noEmit`)**: Passed with `0` errors.
+- **Next.js Production Build (`cd apps/web && npm run build`)**: Passed in `12.5s`, generating `11/11` static pages across `/`, `/login`, `/finder`, `/os`, `/onboarding`, `/studio`, `/dashboard`, and `/oauth/callback`.
+- **Worker Import & OpenAPI Generation**: `from main import app` succeeded cleanly, confirming `131` OpenAPI paths and `135` operations.
+- **ESLint (`cd apps/web && npm run lint`)**: Reported `23` problems (`11` errors, `12` warnings)—specifically `react/no-unescaped-entities`, `@typescript-eslint/no-explicit-any`, and unused imports in `apps/web/src/app/finder/components/*`, `apps/web/src/services/geminiService.ts`, and `apps/web/src/types/index.ts`.
+- **Worker Pytest (`pytest tests/ -v --tb=short`)**: `1 passed, 14 failed`. `GET /health` returned `200`, while the 14 `/api/*` tests in `apps/worker/tests/test_health.py` returned `401 Unauthorized` because Phase 8 added global Bearer-token middleware (`inject_session_context`) to `/api/*` routes without updating the earlier unauthenticated test client calls.
+- **Scaffolds vs. Live Endpoints**: As documented in `docs/FEATURE_MATRIX.md`, `/api/autopilot/launch`, `/api/publish`, and `/api/alerts/dispatch/{org_id}` remain `scaffold` endpoints pending full end-to-end provider orchestration.
+
+---
+
+## 4. Next Steps
+
+1. Update `apps/worker/tests/test_health.py` to register/login a test user and pass `Authorization: Bearer <token>` headers so the full pytest suite passes in CI without `|| true`.
+2. Resolve the 11 ESLint errors (`no-explicit-any` and `react/no-unescaped-entities`) in `apps/web/src/app/finder/` and `geminiService.ts`.
+3. Migrate `apps/worker/src/agents/copywriter.py` from deprecated `google-generativeai` to `google-genai`.

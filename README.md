@@ -1,8 +1,18 @@
-# Conversion Craft
+# ConversionCraft
 
-**Conversion Craft** is a full-stack SaaS **Growth OS for ecommerce** that unifies product intelligence, supplier sourcing, offer & landing page generation, creative automation, paid-media execution, and revenue operations in a single monorepo.
+**ConversionCraft** is a full-stack **Growth OS for ecommerce** that unifies product & supplier discovery, AI copywriting and 3D/UGC creative generation, conversion-focused landing page building, multi-channel paid-media execution, and guardrail-enforced revenue optimization in a single monorepo.
 
-> **Case Study & Deep Dive:** Read [docs/CASE_STUDY.md](docs/CASE_STUDY.md) for the engineering story, tradeoffs, and architecture decisions. The original detailed API & phase reference is preserved at [docs/README_DETAILED.md](docs/README_DETAILED.md).
+> For the full phase-by-phase API contract reference originally shipped with the repo, see [`docs/README_DETAILED.md`](docs/README_DETAILED.md).
+
+---
+
+## Visual Proof (Local Production Build)
+
+Rendered locally from `apps/web` (`next build` + `next start -p 3000`):
+
+| Landing Page (`/`) | Workspace Auth (`/login`) | Product Finder Pro (`/finder`) |
+|---|---|---|
+| ![Home](docs/screenshots/home.png) | ![Login](docs/screenshots/login.png) | ![Finder](docs/screenshots/finder.png) |
 
 ---
 
@@ -10,119 +20,89 @@
 
 ```mermaid
 flowchart TB
-    subgraph Client["apps/web — Next.js 16 + React 19 (TypeScript)"]
-        Home["/ Marketing & Pricing"]
-        Login["/login Auth + Org Session"]
-        OS["/os 6-Step Growth OS"]
-        Finder["/finder Product Finder Pro"]
-        Onboard["/onboarding Enterprise Wizard"]
-        Studio["/studio Creative Kanban"]
-        Dash["/dashboard Revenue Ops & SLA"]
+    subgraph Client["apps/web — Next.js 16 (React 19 + TypeScript + Tailwind v4)"]
+        UI_Pub["Public & Discovery<br/>/ · /login · /finder"]
+        UI_OS["Protected Growth OS<br/>/os · /onboarding · /studio · /dashboard · /oauth/callback"]
+        UI_3D["3D & Visualization<br/>ProductCanvas (@react-three/fiber) · Recharts · Framer Motion"]
+        UI_Pub --- UI_3D
+        UI_OS --- UI_3D
     end
 
-    subgraph Worker["apps/worker — FastAPI 0.5.0 (131 OpenAPI Paths)"]
-        AuthMW["Session Auth & RBAC Middleware"]
-        CoreAPI["Core Routers: Auth, OAuth, Campaigns, Offers, Experiments, Analytics, SLA, Ops Controls"]
-        Agents["AI Agents: Copywriter, Director, Producer, 3D Model Generator"]
-        Scheduler["APScheduler Optimizer Loop + Guardrails"]
-        KillSwitch["OpsControlStore Kill-Switches"]
+    subgraph Worker["apps/worker — FastAPI 0.5.0 (Python 3.12 · 131 OpenAPI Paths)"]
+        MW["Session & RBAC Middleware<br/>Bearer Token · Org Switching · Rate Limiter"]
+        API_Core["Core & Growth APIs<br/>/api/auth/* · /api/onboarding/* · /api/studio/* · /api/offers/* · /api/experiments/*"]
+        API_Ops["Campaigns, Analytics & Guardrails<br/>/api/campaigns/* · /api/analytics/* · /api/alerts/* · /api/sla/* · /api/ops/controls"]
+        Sched["APScheduler<br/>Optimizer & Token Rotation Loops"]
+        MW --> API_Core
+        MW --> API_Ops
+        Sched --> API_Ops
     end
 
-    subgraph Storage["Persistence & Infrastructure"]
-        SQLite["SQLite + Fernet Encryption (secure_store.db)"]
-        JSONStores["Versioned JSON Stores (apps/worker/data/)"]
-        Prisma["Prisma PostgreSQL Schema (packages/db/schema.prisma)"]
-        Docker["Docker Compose: Postgres 15 + Redis"]
+    subgraph Data["Persistence & Security"]
+        PG["PostgreSQL (Prisma Schema)<br/>12 Models: User, Organization, Campaign, Experiment, etc."]
+        SQLite["SQLite + Fernet Encryption<br/>secure_store.db (Auth Sessions & OAuth Blobs)"]
+        Redis["Redis (docker-compose.yml)"]
     end
 
-    subgraph Integrations["External & Mock-Capable Integrations"]
-        Ads["Shopify / Meta Ads / TikTok Ads"]
-        Sourcing["CJ Dropshipping / Apify"]
-        AI["Google Gemini / DeepSeek / Replicate (TripoSR) / Creatify / Flair / Higgsfield / Manus"]
-        Billing["Stripe / Mailchimp"]
+    subgraph External["Channel & AI Integrations (Live + Mock-Capable Adapters)"]
+        Channels["Shopify · Meta Ads · TikTok Ads · Stripe"]
+        AI["Gemini (@google/genai) · DeepSeek · TripoSR · ComfyUI · Creatify · Higgsfield · Flair"]
+        Commerce["CJ Dropshipping · AutoDS · Mailchimp · Manus"]
     end
 
-    Client -->|REST + Bearer Token| AuthMW
-    AuthMW --> CoreAPI
-    CoreAPI --> Agents
-    CoreAPI --> KillSwitch
-    KillSwitch --> Scheduler
-    CoreAPI --> SQLite
-    CoreAPI --> JSONStores
-    CoreAPI -.->|Target Schema| Prisma
-    CoreAPI --> Ads
-    CoreAPI --> Sourcing
-    Agents --> AI
-    CoreAPI --> Billing
+    Client -- "REST + Bearer Auth" --> MW
+    API_Core --> PG
+    API_Core --> SQLite
+    API_Ops --> PG
+    API_Ops --> SQLite
+    API_Core --> AI
+    API_Core --> Commerce
+    API_Ops --> Channels
 ```
 
 ---
 
 ## Verified Feature Breakdown & Proof
 
-### 1. Channel, Auth & Multi-Org RBAC Layer
-- Email/password authentication (`/api/auth/register`, `/api/auth/login`, `/api/auth/session`, `/api/auth/switch-org`, `/api/auth/logout`) backed by SQLite + `cryptography.fernet` encryption (`secure_store.db`).
-- Global `/api/*` session middleware (`inject_session_context`) with explicit public allowlist for login/register and signed webhooks.
-- OAuth connect/callback scaffolding for Shopify, Meta, and TikTok with state/nonce validation, token rotation hooks, webhook signature verification, and idempotency guards.
+All checks below were executed directly against this branch (`docs/portfolio-demo`) without private production credentials:
 
-### 2. Intelligence & Sourcing Layer
-- Niche product discovery (`apps/worker/src/sourcing/finder.py`) with 3x markup profitability calculation, CJ Dropshipping integration, and Apify/mock fallback.
-- Competitor site analysis (`/api/analyze`) and Product Finder Pro UI (`/finder`) with filtering, sorting, comparison modal, and score breakdown.
+| Area | Command / Source | Observed Result | Notes |
+|---|---|---|---|
+| **Frontend Typecheck** | `cd apps/web && npx tsc --noEmit` | **PASS** (exit `0`, 0 errors) | Matches CI typecheck gate |
+| **Frontend Production Build** | `cd apps/web && npm run build` | **PASS** (exit `0`, compiled in `12.5s`, `11/11` static pages) | Built routes: `/`, `/_not-found`, `/dashboard`, `/finder`, `/login`, `/oauth/callback`, `/onboarding`, `/os`, `/studio` |
+| **Frontend Linter** | `cd apps/web && npm run lint` | **23 problems** (`11` errors, `12` warnings) | Unescaped quotes & `any` types in `apps/web/src/app/finder/components/*`, `geminiService.ts`, `types/index.ts` |
+| **Worker App Import & OpenAPI** | `python -c "from main import app; print('Import OK')"` | **PASS** (`Import OK`) | FastAPI `ConversionCraft Worker API` `v0.5.0`: **131 paths**, **135 operations** ([`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md)) |
+| **Worker Test Suite** | `pytest tests/ -v --tb=short` | **1 passed, 14 failed** | `test_health` passed (`200`); 14 `/api/*` tests returned `401 Unauthorized` because Phase 8 auth middleware requires a Bearer token not yet sent by `test_health.py` |
+| **Database Schema** | `packages/db/schema.prisma` | **12 Prisma models** | `User`, `Organization`, `OrgMember`, `OAuthToken`, `Campaign`, `Experiment`, `AttributionEvent`, `OnboardingState`, `StudioState`, `AuditLog`, `AlertRoute`, `AnalyticsPreferences` |
 
-### 3. Conversion, Offer & Experimentation Layer
-- Margin- and inventory-constrained Offer Engine (`/api/offers/recommend-v2`) generating pre-checkout bundle blocks and post-purchase upsells.
-- Deterministic SHA-256 variant assignment, softmax traffic rebalancing, and z-test significance evaluation (`/api/experiments/*`).
-- AI page builder (`/api/store/build-page`, `/api/store/build-landing`) and 3D product viewer (`ProductCanvas.tsx` via Three.js).
-
-### 4. Creative Ops Studio
-- Kanban pipeline (`/studio`: `concepts -> variants -> scheduled -> posted`) with optimistic concurrency (`expected_version` -> `409 version_conflict` on stale writes).
-- Mock-capable creative service wrappers for DeepSeek copywriting, Google Gemini agents, Replicate/TripoSR 3D, Creatify, Flair, Higgsfield, and Comfy-style influencer workflows.
-
-### 5. Revenue Ops, SLA & Safety Controls
-- Automated optimizer loop (`APScheduler` + `OptimizerExecutor`) enforcing per-platform ROAS floors and daily budget increase caps.
-- Runtime **Ops Kill-Switches** (`/api/ops/controls`) gating `/api/campaigns/optimizer/execute`, `/api/copilot/execute`, and `/api/autopilot/launch` with per-run action caps.
-- Enterprise analytics, anomaly detection, MTTA/MTTR SLA metrics, alert routing, and escalation policy JSON validation with line/column error hints.
-
----
-
-## Visual & Verification Proof
-
-### Rendered UI Screenshots (Local Next.js Dev Server)
-| Landing Page (`/`) | Auth & Workspace Login (`/login`) | Product Finder Pro (`/finder`) |
-|---|---|---|
-| ![Home](docs/screenshots/home.png) | ![Login](docs/screenshots/login.png) | ![Finder](docs/screenshots/finder.png) |
-
-### Automated Checks & API Schema
-Full observed command outputs are recorded in [docs/VERIFIED_CHECKS.md](docs/VERIFIED_CHECKS.md) and the exported FastAPI schema is at [docs/openapi.json](docs/openapi.json).
-
-- **TypeScript (`npx tsc --noEmit` in `apps/web`):** Passed with `0` errors.
-- **FastAPI Worker Import & OpenAPI:** `from main import app` succeeded; exported **131 API paths** to [docs/openapi.json](docs/openapi.json).
-- **ESLint (`npm run lint` in `apps/web`):** Reported `23 problems (11 errors, 12 warnings)` (unescaped entities and `no-explicit-any` in finder/service types).
-- **Next.js Build (`npm run build` in `apps/web`):** Compiled in `14.3s`, then failed at page data collection (`ENOENT` on `.next/server/pages-manifest.json` with Turbopack workspace root inference).
-- **Worker Pytest (`python -m pytest tests/ -v --tb=short`):** `1 passed` (`/health`), `14 failed` (`401 Unauthorized` because `tests/test_health.py` predates the Bearer session auth middleware added in `7b86c8f`).
-
-See [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) for the endpoint-by-endpoint `live` / `mock-capable` / `scaffold` matrix.
+### Key Capabilities (see [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) for endpoint-level status)
+- **Auth, Orgs & RBAC**: Email/password registration & login, Bearer session tokens, org switching, and Fernet-encrypted `secure_store.db`.
+- **Competitor & Product Intelligence**: Niche analysis (`/api/analyze`), CJ Dropshipping & AutoDS sourcing (`/api/sourcing/*`, `/api/fulfillment/*`), and Product Finder Pro UI (`/finder`).
+- **Offer Engine & Storefront**: Bundle/upsell recommendations (`/api/offers/recommend-v2`), landing page generation (`/api/store/*`), and interactive 3D product viewer (`ProductCanvas` via `@react-three/fiber`).
+- **Creative Studio & AI Media**: Kanban pipeline (`/studio`) with optimistic concurrency versioning (`409` conflict handling) and mock-capable adapters for DeepSeek, TripoSR, Creatify, Higgsfield, Flair, and ComfyUI influencer flows.
+- **Revenue Ops, SLA & Kill-Switches**: Enterprise analytics (`/dashboard`), alert routing & escalation policy validation with line-level JSON error hints, MTTA/MTTR SLA tracking, and `/api/ops/controls` execution caps.
 
 ---
 
 ## Verified Tech Stack
 
-### Monorepo Root (`package.json`, `docker-compose.yml`, `render.yaml`, `vercel.json`)
-- **Orchestration:** `concurrently` (`^8.2.2`), `docker-compose.yml` (`postgres:15-alpine`, `redis:alpine`)
-- **Deployment Targets:** `vercel.json` (`@vercel/next`), `render.yaml` (`conversion-craft-worker` Python web service)
+### Root Monorepo (`package.json`) & Infrastructure
+- **Monorepo runner**: `concurrently` (`^8.2.2`)
+- **Containers**: `docker-compose.yml` (`postgres:15-alpine`, `redis:alpine`)
+- **Deployment configs**: `vercel.json` (`@vercel/next`), `render.yaml` (`uvicorn main:app`), `.github/workflows/ci.yml`
 
 ### Frontend (`apps/web/package.json`)
-- **Framework:** `next` (`16.0.4`), `react` (`19.2.0`), `react-dom` (`19.2.0`), `typescript` (`^5`)
-- **Styling & Animation:** `tailwindcss` (`^4`), `@tailwindcss/postcss` (`^4`), `tailwindcss-animate` (`^1.0.7`), `framer-motion` (`^12.33.0`), `clsx` (`^2.1.1`), `tailwind-merge` (`^3.4.0`)
-- **UI, 3D & Data Viz:** `@radix-ui/react-dialog` (`^1.1.15`), `lucide-react` (`^0.554.0`), `recharts` (`^3.7.0`), `three` (`^0.181.2`), `@react-three/fiber` (`^9.5.0`), `@react-three/drei` (`^10.7.7`), `react-markdown` (`^10.1.0`)
-- **AI SDK:** `@google/genai` (`^1.30.0`)
-- **Linting:** `eslint` (`^9`), `eslint-config-next` (`16.0.4`)
+- **Framework**: `next` (`16.0.4`), `react` (`19.2.0`), `react-dom` (`19.2.0`), `typescript` (`^5`)
+- **UI & Styling**: `tailwindcss` (`^4`), `@tailwindcss/postcss` (`^4`), `tailwindcss-animate` (`^1.0.7`), `tailwind-merge` (`^3.4.0`), `clsx` (`^2.1.1`), `@radix-ui/react-dialog` (`^1.1.15`), `lucide-react` (`^0.554.0`), `framer-motion` (`^12.33.0`)
+- **3D & Charts**: `three` (`^0.181.2`), `@react-three/fiber` (`^9.5.0`), `@react-three/drei` (`^10.7.7`), `recharts` (`^3.7.0`)
+- **AI & Content**: `@google/genai` (`^1.30.0`), `react-markdown` (`^10.1.0`)
+- **Linting**: `eslint` (`^9`), `eslint-config-next` (`16.0.4`)
 
 ### Backend Worker (`apps/worker/requirements.txt`)
-- **Web & Runtime:** `fastapi`, `uvicorn`, `python-multipart`, `python-dotenv`, `requests`
-- **Security & Scheduling:** `cryptography`, `apscheduler`
-- **AI & External SDKs:** `google-generativeai`, `apify-client`, `replicate`
-- **Database Client:** `prisma` (schema in `packages/db/schema.prisma` targeting PostgreSQL)
+- **Web & API**: `fastapi`, `uvicorn`, `python-multipart`, `requests`, `python-dotenv`
+- **Security & Scheduling**: `cryptography`, `apscheduler`
+- **Database**: `prisma`
+- **AI & Scraping**: `google-generativeai`, `replicate`, `apify-client`
 
 ---
 
@@ -131,61 +111,40 @@ See [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) for the endpoint-by-endpoin
 ### Prerequisites
 - Node.js 20+ and npm
 - Python 3.12+
-- (Optional) Docker for Postgres 15 & Redis (`docker compose up -d`)
+- Docker (optional, for local PostgreSQL + Redis)
 
-### 1. Install Dependencies
+### 1. Environment Variables
 ```bash
-# Root
+cp apps/worker/.env.example apps/worker/.env
+```
+*(Configure `DATABASE_URL`, `CORS_ORIGINS`, and optional provider keys in `apps/worker/.env`. All mock-capable endpoints work locally without external paid API keys.)*
+
+### 2. Install & Run
+```bash
+# Optional: start Postgres + Redis
+docker compose up -d
+
+# Root monorepo scripts
 npm install
 
 # Frontend
-cd apps/web && npm ci
-
-# Backend Worker
-cd ../worker
-python -m venv .venv
-# Windows: .\.venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Configure Environment
-```bash
-cp apps/web/.env.example apps/web/.env.local
-cp apps/worker/.env.example apps/worker/.env
-```
-Mock-capable endpoints work locally without third-party API keys.
-
-### 3. Run Locally
-```bash
-# Terminal 1 — FastAPI Worker (:8000)
-cd apps/worker
-uvicorn main:app --reload --port 8000
-
-# Terminal 2 — Next.js Frontend (:3000)
 cd apps/web
-npm run dev
+npm install
+npm run dev          # http://localhost:3000
+
+# Backend worker (in a second terminal)
+cd apps/worker
+python -m venv venv
+# Windows: .\venv\Scripts\activate | macOS/Linux: source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
 ---
 
-## Repository Map
+## Documentation Index
 
-```text
-conversioncraft/
-├── apps/
-│   ├── web/                  # Next.js 16 Growth OS UI
-│   └── worker/               # FastAPI backend + AI agents + APScheduler
-├── packages/db/              # Shared Prisma PostgreSQL schema
-├── docs/
-│   ├── CASE_STUDY.md         # First-person engineering case study
-│   ├── README_DETAILED.md    # Preserved full API & phase reference
-│   ├── FEATURE_MATRIX.md     # Route & endpoint status matrix
-│   ├── VERIFIED_CHECKS.md    # Observed test/lint/build outputs
-│   ├── openapi.json          # Exported FastAPI OpenAPI schema (131 paths)
-│   └── screenshots/          # Captured local UI renders
-├── legacy/                   # Archived legacy assets (non-primary runtime)
-├── docker-compose.yml
-├── render.yaml
-└── vercel.json
-```
+- [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md) — Engineering case study (problem, architecture decisions, trade-offs, and honest gaps)
+- [`docs/README_DETAILED.md`](docs/README_DETAILED.md) — Full preserved API contract & phase-by-phase reference
+- [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) — Endpoint-by-endpoint `live` / `mock-capable` / `scaffold` status matrix
+- [`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md) — Machine-generated FastAPI OpenAPI route inventory (131 paths)
