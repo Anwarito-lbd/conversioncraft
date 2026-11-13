@@ -11,7 +11,6 @@ import {
   CreditCard,
   Globe,
   Layers,
-  MessageCircle,
   Rocket,
   Search,
   ShoppingBag,

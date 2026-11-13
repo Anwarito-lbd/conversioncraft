@@ -1,6 +1,6 @@
 import React from 'react';
 import { WinningProduct } from '@/types';
-import { X, Check, Minus, TrendingUp, AlertTriangle, DollarSign, ShoppingBag } from 'lucide-react';
+import { X, TrendingUp, AlertTriangle, DollarSign, ShoppingBag } from 'lucide-react';
 
 interface ComparisonModalProps {
   products: WinningProduct[];
@@ -119,11 +119,11 @@ const ComparisonModal: React.FC<ComparisonModalProps> = ({ products, onClose }) 
               {/* Winning Reason */}
               <tr className="hover:bg-slate-800/30 transition-colors">
                 <td className="p-4 font-semibold text-slate-300 sticky left-0 bg-slate-900 z-10">
-                  The "Why"
+                  The &ldquo;Why&rdquo;
                 </td>
                 {products.map(p => (
                   <td key={p.id} className="p-4">
-                    <p className="text-xs text-slate-400 italic leading-relaxed">"{p.winningReason ?? 'N/A'}"</p>
+                    <p className="text-xs text-slate-400 italic leading-relaxed">&ldquo;{p.winningReason ?? 'N/A'}&rdquo;</p>
                   </td>
                 ))}
               </tr>

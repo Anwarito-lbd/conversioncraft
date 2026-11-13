@@ -1,7 +1,7 @@
 
 
-import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { AutoPilotResult, WinningProduct, Supplier, LandingPageData, AdScript, SocialPost, SupplierV2, CustomerReview, MarketSimulationResult, TrendGenesisResult, ArbitrageOpportunity, AdMutation, BusinessModel, VideoArchetype } from "@/types";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { AutoPilotResult, WinningProduct, Supplier, LandingPageData, AdScript, SocialPost, CustomerReview, MarketSimulationResult, TrendGenesisResult, ArbitrageOpportunity, AdMutation, BusinessModel, VideoArchetype, ComfyUIWorkflow } from "@/types";
 
 const getGeminiApiKey = (): string => {
   const key = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.API_KEY || "";
@@ -199,7 +199,7 @@ export const analyzeCompetitor = async (url: string) => {
 
     return {
       data: JSON.parse(jsonText),
-      sources: chunks.map((c: any) => c.web?.uri).filter(Boolean)
+      sources: chunks.map((c) => c.web?.uri).filter((uri): uri is string => Boolean(uri))
     };
   } catch (error) {
     console.error("Analysis failed", error);
@@ -497,7 +497,9 @@ export const findArbitrageOpportunities = async (niche: string): Promise<Arbitra
   return JSON.parse(cleanJson(response.text || "[]"));
 };
 
-export const generateComfyUIWorkflow = async (adScript: any) => {
+export const generateComfyUIWorkflow = async (
+  adScript: Pick<AdScript, 'visualCue' | 'hook'>
+): Promise<ComfyUIWorkflow> => {
   return {
     "nodes": [
       { "id": 1, "type": "CheckpointLoaderSimple", "widgets_values": ["v1-5-pruned-emaonly.ckpt"] },
@@ -526,7 +528,7 @@ export const generateSocialPost = async (productName: string, platform: 'TikTok'
 
 export const uploadToSocials = async (post: SocialPost, mediaUrl: string) => {
   await new Promise(resolve => setTimeout(resolve, 2000));
-  return { success: true, platform: post.platform, postId: `mock_id_${Date.now()}` };
+  return { success: true, platform: post.platform, postId: `mock_id_${Date.now()}`, mediaUrl };
 }
 
 export const generateReviews = async (productName: string, supplierUrl?: string): Promise<CustomerReview[]> => {

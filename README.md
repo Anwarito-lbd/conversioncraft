@@ -6,17 +6,37 @@
 
 ---
 
-## Visual Proof (Local Production Build)
+## Visual Proof & Live Walkthrough
 
-Rendered locally from `apps/web` (`next build` + `next start -p 3000`):
+### Interactive Walkthrough (Next.js 16 + Live FastAPI Worker)
+
+Recorded via headless Chromium/Edge (Chrome DevTools Protocol) + FFmpeg walking through `/`, `/login` (live account registration against FastAPI `/api/auth/register`), `/os`, `/studio`, `/dashboard`, and `/finder`:
+
+![ConversionCraft Live Walkthrough](docs/images/walkthrough-preview.gif)
+
+- Full HD Video: [`docs/images/walkthrough.mp4`](docs/images/walkthrough.mp4) (`484 KB`) · [`docs/images/walkthrough.webm`](docs/images/walkthrough.webm) (`1.03 MB`)
+
+### Desktop Views (`1440×900`)
 
 | Landing Page (`/`) | Workspace Auth (`/login`) | Product Finder Pro (`/finder`) |
 |---|---|---|
 | ![Home](docs/screenshots/home.png) | ![Login](docs/screenshots/login.png) | ![Finder](docs/screenshots/finder.png) |
 
+| Growth OS War Room (`/os`, Authenticated) | Command Center & Guardrails (`/dashboard`, Authenticated) |
+|---|---|
+| ![Growth OS](docs/screenshots/os.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
+### Mobile Views (`390×844`)
+
+| Mobile Landing (`/`) | Mobile Auth (`/login`) | Mobile Finder (`/finder`) |
+|---|---|---|
+| ![Home Mobile](docs/screenshots/home-mobile.png) | ![Login Mobile](docs/screenshots/login-mobile.png) | ![Finder Mobile](docs/screenshots/finder-mobile.png) |
+
 ---
 
 ## Architecture
+
+![ConversionCraft System Architecture & Verified Pipeline](docs/images/architecture-pipeline.png)
 
 ```mermaid
 flowchart TB
@@ -29,7 +49,7 @@ flowchart TB
     end
 
     subgraph Worker["apps/worker — FastAPI 0.5.0 (Python 3.12 · 131 OpenAPI Paths)"]
-        MW["Session & RBAC Middleware<br/>Bearer Token · Org Switching · Rate Limiter"]
+        MW["Session, CORS & RBAC Middleware<br/>Bearer Token · Preflight OPTIONS · Org Switching · Rate Limiter"]
         API_Core["Core & Growth APIs<br/>/api/auth/* · /api/onboarding/* · /api/studio/* · /api/offers/* · /api/experiments/*"]
         API_Ops["Campaigns, Analytics & Guardrails<br/>/api/campaigns/* · /api/analytics/* · /api/alerts/* · /api/sla/* · /api/ops/controls"]
         Sched["APScheduler<br/>Optimizer & Token Rotation Loops"]
@@ -39,7 +59,7 @@ flowchart TB
     end
 
     subgraph Data["Persistence & Security"]
-        PG["PostgreSQL (Prisma Schema)<br/>12 Models: User, Organization, Campaign, Experiment, etc."]
+        PG["PostgreSQL 15 (Prisma Schema)<br/>12 Models: User, Organization, Campaign, Experiment, etc."]
         SQLite["SQLite + Fernet Encryption<br/>secure_store.db (Auth Sessions & OAuth Blobs)"]
         Redis["Redis (docker-compose.yml)"]
     end
@@ -62,47 +82,52 @@ flowchart TB
 
 ---
 
+## Tools, Skills, AI Models & Engineering Stack
+
+Every tool, model, and library listed below is directly verified in the repository source and dependency manifests:
+
+### AI Models & Generative Media Pipelines
+- **Google Gemini SDK (`@google/genai` `^1.30.0` in `apps/web/src/services/geminiService.ts`)**:
+  - `gemini-3-pro-preview` (with `googleSearch` grounding and `thinkingBudget`): niche product discovery, competitor battlefield analysis, Meta/TikTok ad library research, supplier matching, review synthesis, market simulation, trend genesis, and arbitrage opportunity scanning.
+  - `gemini-2.5-flash` & `gemini-2.5-flash-image`: fast social caption generation, landing-page assistant chat, and image-to-image marketing creative editing (`Modality.IMAGE`).
+  - `imagen-4.0-generate-001`: commercial product mockup and studio photography generation.
+  - `veo-3.1-fast-generate-preview`: short-form product video and ad scene generation.
+- **Worker AI Agents (`google-generativeai` in `apps/worker/src/agents/`)**:
+  - `copywriter.py` and `director.py` invoke `gemini-1.5-pro-latest` for server-side copywriting and storyboard generation; `producer.py` and `model_generator.py` orchestrate Replicate (`replicate`) and 3D model pipelines.
+- **DeepSeek (`apps/worker/src/services/deepseek_service.py` & `chatbot_service.py`)**: OpenAI-compatible `api.deepseek.com/v1` adapter for product descriptions, ad copy, SEO content, and the landing-page concierge chatbot (with deterministic template fallbacks when unconfigured).
+- **Specialized Creative & Sourcing Adapters (`apps/worker/src/services/`)**: Mock-capable wrappers for `creatify_service.py` (AI UGC video), `flair_service.py` (product staging & background removal), `triposr_service.py` (3D mesh synthesis), `higgsfield_service.py`, `cj_service.py` (CJ Dropshipping), `autods_service.py` (AutoDS fulfillment), `mailchimp_service.py`, `manus_service.py`, `upcart_service.py`, and `stripe_service.py`.
+
+### Frontend Application (`apps/web/package.json`)
+- **Framework & Language**: `next` (`16.0.4`, App Router + Turbopack with scoped `turbopack.root`), `react` (`19.2.0`), `react-dom` (`19.2.0`), `typescript` (`^5`).
+- **UI, Motion & Styling**: `tailwindcss` (`^4`), `@tailwindcss/postcss` (`^4`), `tailwindcss-animate` (`^1.0.7`), `tailwind-merge` (`^3.4.0`), `clsx` (`^2.1.1`), `@radix-ui/react-dialog` (`^1.1.15`), `lucide-react` (`^0.554.0`), `framer-motion` (`^12.33.0`), `react-markdown` (`^10.1.0`).
+- **3D & Analytics Visualization**: `three` (`^0.181.2`), `@react-three/fiber` (`^9.5.0`), `@react-three/drei` (`^10.7.7`) powering `ProductCanvas`, plus `recharts` (`^3.7.0`) for trend and performance charts.
+- **Code Quality**: `eslint` (`^9`) + `eslint-config-next` (`16.0.4`).
+
+### Backend Worker, API Contract & Security (`apps/worker`)
+- **API & Runtime**: `fastapi` (`ConversionCraft Worker API v0.5.0`), `uvicorn`, `pydantic`, `python-multipart`, `requests`, `python-dotenv`.
+- **OpenAPI Contract**: Machine-verified `131` OpenAPI paths (`135` operations) exported in [`docs/openapi.json`](docs/openapi.json) and summarized in [`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md).
+- **Auth, Encryption & Multi-Tenant RBAC**: `AuthService` (`apps/worker/src/services/auth_service.py`) persists users and Bearer sessions in SQLite (`secure_store.db`), hashes passwords with `PBKDF2-SHA256` (210,000 iterations), and encrypts session/OAuth payloads with `cryptography.fernet.Fernet`. `inject_session_context` middleware enforces Bearer auth across `/api/*` while passing `OPTIONS` CORS preflights to `CORSMiddleware`.
+- **Reliability & Scheduling**: `apscheduler` for background optimizer execution and OAuth token rotation, paired with `rate_limiter.py`, `idempotency_store.py`, `dead_letter_queue.py`, `audit_logger.py`, optimistic concurrency (`409` `version_conflict`), and `/api/ops/controls` kill-switches.
+
+### Database, Infrastructure & QA Tooling
+- **Database & Cache**: `prisma` + `packages/db/schema.prisma` (**12 PostgreSQL models**), `docker-compose.yml` (`postgres:15-alpine`, `redis:alpine`).
+- **CI & Verification**: `.github/workflows/ci.yml` enforcing `npx tsc --noEmit`, `npm run lint`, `npm run build`, FastAPI import check, and `pytest tests/ -v --tb=short`; headless Chromium/Edge via Chrome DevTools Protocol (CDP) + FFmpeg for desktop (`1440×900`) and mobile (`390×844`) screenshot and walkthrough video capture.
+- **Monorepo & Deployment**: `concurrently` (`^8.2.2`), `vercel.json` (`@vercel/next`), `render.yaml` (`uvicorn main:app`).
+
+---
+
 ## Verified Feature Breakdown & Proof
 
 All checks below were executed directly against this branch (`docs/portfolio-demo`) without private production credentials:
 
 | Area | Command / Source | Observed Result | Notes |
 |---|---|---|---|
-| **Frontend Typecheck** | `cd apps/web && npx tsc --noEmit` | **PASS** (exit `0`, 0 errors) | Matches CI typecheck gate |
-| **Frontend Production Build** | `cd apps/web && npm run build` | **PASS** (exit `0`, compiled in `12.5s`, `11/11` static pages) | Built routes: `/`, `/_not-found`, `/dashboard`, `/finder`, `/login`, `/oauth/callback`, `/onboarding`, `/os`, `/studio` |
-| **Frontend Linter** | `cd apps/web && npm run lint` | **23 problems** (`11` errors, `12` warnings) | Unescaped quotes & `any` types in `apps/web/src/app/finder/components/*`, `geminiService.ts`, `types/index.ts` |
-| **Worker App Import & OpenAPI** | `python -c "from main import app; print('Import OK')"` | **PASS** (`Import OK`) | FastAPI `ConversionCraft Worker API` `v0.5.0`: **131 paths**, **135 operations** ([`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md)) |
-| **Worker Test Suite** | `pytest tests/ -v --tb=short` | **1 passed, 14 failed** | `test_health` passed (`200`); 14 `/api/*` tests returned `401 Unauthorized` because Phase 8 auth middleware requires a Bearer token not yet sent by `test_health.py` |
+| **Frontend Typecheck** | `cd apps/web && npx tsc --noEmit` | **PASS** (`exit 0`, `0` errors) | Strict TypeScript check across all `.ts`/`.tsx` files |
+| **Frontend Linter** | `cd apps/web && npm run lint` | **PASS** (`exit 0`, `0` errors) | `3` `@next/next/no-img-element` warnings for dynamic external supplier images |
+| **Frontend Production Build** | `cd apps/web && npm run build` | **PASS** (`exit 0`, `10.6s` compile, `11/11` static pages) | Built `/`, `/_not-found`, `/dashboard`, `/finder`, `/login`, `/oauth/callback`, `/onboarding`, `/os`, `/studio` |
+| **Worker App Import & OpenAPI** | `python -c "from main import app; print('Import OK')"` | **PASS** (`Import OK`) | FastAPI `ConversionCraft Worker API` `v0.5.0`: **131 paths**, **135 operations**, [`docs/openapi.json`](docs/openapi.json) synced |
+| **Worker Test Suite** | `pytest tests/ -v --tb=short` | **18 passed, 0 failed** (`6.34s`) | Covers `/health`, unauthenticated `401`, CORS `OPTIONS` preflight, auth register/login/session/logout lifecycle, and all 14 `/api/*` endpoints |
 | **Database Schema** | `packages/db/schema.prisma` | **12 Prisma models** | `User`, `Organization`, `OrgMember`, `OAuthToken`, `Campaign`, `Experiment`, `AttributionEvent`, `OnboardingState`, `StudioState`, `AuditLog`, `AlertRoute`, `AnalyticsPreferences` |
-
-### Key Capabilities (see [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) for endpoint-level status)
-- **Auth, Orgs & RBAC**: Email/password registration & login, Bearer session tokens, org switching, and Fernet-encrypted `secure_store.db`.
-- **Competitor & Product Intelligence**: Niche analysis (`/api/analyze`), CJ Dropshipping & AutoDS sourcing (`/api/sourcing/*`, `/api/fulfillment/*`), and Product Finder Pro UI (`/finder`).
-- **Offer Engine & Storefront**: Bundle/upsell recommendations (`/api/offers/recommend-v2`), landing page generation (`/api/store/*`), and interactive 3D product viewer (`ProductCanvas` via `@react-three/fiber`).
-- **Creative Studio & AI Media**: Kanban pipeline (`/studio`) with optimistic concurrency versioning (`409` conflict handling) and mock-capable adapters for DeepSeek, TripoSR, Creatify, Higgsfield, Flair, and ComfyUI influencer flows.
-- **Revenue Ops, SLA & Kill-Switches**: Enterprise analytics (`/dashboard`), alert routing & escalation policy validation with line-level JSON error hints, MTTA/MTTR SLA tracking, and `/api/ops/controls` execution caps.
-
----
-
-## Verified Tech Stack
-
-### Root Monorepo (`package.json`) & Infrastructure
-- **Monorepo runner**: `concurrently` (`^8.2.2`)
-- **Containers**: `docker-compose.yml` (`postgres:15-alpine`, `redis:alpine`)
-- **Deployment configs**: `vercel.json` (`@vercel/next`), `render.yaml` (`uvicorn main:app`), `.github/workflows/ci.yml`
-
-### Frontend (`apps/web/package.json`)
-- **Framework**: `next` (`16.0.4`), `react` (`19.2.0`), `react-dom` (`19.2.0`), `typescript` (`^5`)
-- **UI & Styling**: `tailwindcss` (`^4`), `@tailwindcss/postcss` (`^4`), `tailwindcss-animate` (`^1.0.7`), `tailwind-merge` (`^3.4.0`), `clsx` (`^2.1.1`), `@radix-ui/react-dialog` (`^1.1.15`), `lucide-react` (`^0.554.0`), `framer-motion` (`^12.33.0`)
-- **3D & Charts**: `three` (`^0.181.2`), `@react-three/fiber` (`^9.5.0`), `@react-three/drei` (`^10.7.7`), `recharts` (`^3.7.0`)
-- **AI & Content**: `@google/genai` (`^1.30.0`), `react-markdown` (`^10.1.0`)
-- **Linting**: `eslint` (`^9`), `eslint-config-next` (`16.0.4`)
-
-### Backend Worker (`apps/worker/requirements.txt`)
-- **Web & API**: `fastapi`, `uvicorn`, `python-multipart`, `requests`, `python-dotenv`
-- **Security & Scheduling**: `cryptography`, `apscheduler`
-- **Database**: `prisma`
-- **AI & Scraping**: `google-generativeai`, `replicate`, `apify-client`
 
 ---
 
@@ -144,7 +169,9 @@ uvicorn main:app --reload --port 8000
 
 ## Documentation Index
 
-- [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md) — Engineering case study (problem, architecture decisions, trade-offs, and honest gaps)
+- [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md) — Engineering case study (problem, architecture decisions, security/CORS fixes, and honest gaps)
+- [`docs/PROOF_OF_WORK.md`](docs/PROOF_OF_WORK.md) — Full post-edit verification log, command outputs, and visual artifact inventory
+- [`docs/VERIFIED_CHECKS.md`](docs/VERIFIED_CHECKS.md) — Concise check matrix and observed command transcripts
 - [`docs/README_DETAILED.md`](docs/README_DETAILED.md) — Full preserved API contract & phase-by-phase reference
 - [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) — Endpoint-by-endpoint `live` / `mock-capable` / `scaffold` status matrix
 - [`docs/API_SCHEMA_SUMMARY.md`](docs/API_SCHEMA_SUMMARY.md) — Machine-generated FastAPI OpenAPI route inventory (131 paths)

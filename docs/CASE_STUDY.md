@@ -2,7 +2,7 @@
 
 **Author:** Anwar  
 **Repository:** `Anwarito-lbd/conversioncraft`  
-**Stack:** Next.js 16, React 19, TypeScript, Tailwind CSS v4, Three.js (`@react-three/fiber`), FastAPI (`0.5.0`), Prisma (PostgreSQL), SQLite + Fernet Encryption, APScheduler
+**Stack:** Next.js 16 (Turbopack), React 19, TypeScript, Tailwind CSS v4, Three.js (`@react-three/fiber`), `@google/genai`, FastAPI (`0.5.0`), Prisma (PostgreSQL), SQLite + Fernet Encryption, APScheduler
 
 ---
 
@@ -18,14 +18,15 @@ I built **ConversionCraft** to consolidate that entire lifecycle into one **Grow
 
 ### Monorepo Split: Next.js 16 Frontend + FastAPI Worker (`apps/web` & `apps/worker`)
 I separated the interactive UI (`apps/web`) from the orchestration and integration engine (`apps/worker`):
-- **Frontend (`apps/web`)**: Built with Next.js 16 (App Router + Turbopack), React 19, Framer Motion, Recharts, and `@react-three/fiber` / `@react-three/drei` (`ProductCanvas`) for interactive 3D product previews. Protected routes (`/os`, `/onboarding`, `/studio`, `/dashboard`) share a `SessionControls` header for organization switching and logout.
-- **Backend Worker (`apps/worker`)**: A FastAPI service (`ConversionCraft Worker API v0.5.0`) exposing **131 OpenAPI paths (135 operations)** alongside an `APScheduler` lifespan loop for background optimization and token rotation.
+- **Frontend (`apps/web`)**: Built with Next.js 16 (App Router + Turbopack, scoped cleanly via `turbopack.root`), React 19, Framer Motion, Recharts, and `@react-three/fiber` / `@react-three/drei` (`ProductCanvas`) for interactive 3D product previews. Client-side intelligence flows use `@google/genai` (`gemini-3-pro-preview`, `gemini-2.5-flash`, `gemini-2.5-flash-image`, `imagen-4.0-generate-001`, `veo-3.1-fast-generate-preview`). Protected routes (`/os`, `/onboarding`, `/studio`, `/dashboard`) share a `SessionControls` header for organization switching and logout.
+- **Backend Worker (`apps/worker`)**: A FastAPI service (`ConversionCraft Worker API v0.5.0`) exposing **131 OpenAPI paths (135 operations)** synced to `docs/openapi.json`, alongside an `APScheduler` lifespan loop for background optimization and token rotation.
 
 ### Dual Persistence: Prisma PostgreSQL + Encrypted Local `secure_store.db`
 - `packages/db/schema.prisma` defines **12 relational models** (`User`, `Organization`, `OrgMember`, `OAuthToken`, `Campaign`, `Experiment`, `AttributionEvent`, `OnboardingState`, `StudioState`, `AuditLog`, `AlertRoute`, `AnalyticsPreferences`).
-- For auth sessions, user credentials, and sensitive OAuth token blobs, `AuthService` (`apps/worker/src/services/auth_service.py`) uses a thread-safe SQLite store (`secure_store.db`) encrypted at rest with `cryptography.fernet.Fernet`, automatically migrating legacy JSON stores on startup.
+- For auth sessions, user credentials, and sensitive OAuth token blobs, `AuthService` (`apps/worker/src/services/auth_service.py`) uses a thread-safe SQLite store (`secure_store.db`) encrypted at rest with `cryptography.fernet.Fernet` and `PBKDF2-SHA256` (210,000 iterations), automatically migrating legacy JSON stores on startup.
 
-### Optimistic Concurrency & Ops Guardrails
+### Session Auth Middleware, CORS Preflight & Optimistic Concurrency
+- **Bearer Auth & Preflight Handling**: `inject_session_context` in `apps/worker/main.py` enforces Bearer session tokens on `/api/*` (returning `401` when missing/invalid) while explicitly allowing public auth/webhook endpoints and browser `OPTIONS` CORS preflight requests to reach `CORSMiddleware` so cross-origin Next.js client requests succeed cleanly.
 - **Versioned State**: `/api/onboarding/state/upsert` and `/api/studio/state/upsert` enforce `expected_version` checks and return `409` (`version_conflict`) if two tabs or collaborators overwrite each other's state.
 - **Safety Kill-Switches**: Because automated ad-budget scaling can burn spend quickly if misconfigured, `/api/ops/controls` exposes per-org and global toggles (`optimizer_execute_enabled`, `copilot_execute_enabled`, `autopilot_launch_enabled`) plus hard action caps (`1..500`), enforced directly in `/api/campaigns/optimizer/execute`, `/api/copilot/execute`, and `/api/autopilot/launch`.
 - **Line-Level Policy Validation**: Escalation policies (`/api/alerts/escalation/{org_id}`) validate `suppression_windows_json` and `on_call_schedule_json` and return `line`, `column`, `line_text`, and `pointer` hints so operators can jump straight to syntax errors in the dashboard UI.
@@ -35,21 +36,21 @@ Every external integration (Stripe, DeepSeek, CJ Dropshipping, AutoDS, Creatify,
 
 ---
 
-## 3. Verification & Honest Engineering Gaps
+## 3. Verification & Quality Hardening
 
-When preparing this repository for portfolio review (without private production API keys), I ran the full local verification suite and recorded exact outcomes:
+After fixing frontend lint/type hygiene, Next.js Turbopack root configuration, CORS `OPTIONS` preflight handling, and authenticated pytest coverage on branch `docs/portfolio-demo` (without private production API keys):
 
 - **TypeScript (`cd apps/web && npx tsc --noEmit`)**: Passed with `0` errors.
-- **Next.js Production Build (`cd apps/web && npm run build`)**: Passed in `12.5s`, generating `11/11` static pages across `/`, `/login`, `/finder`, `/os`, `/onboarding`, `/studio`, `/dashboard`, and `/oauth/callback`.
-- **Worker Import & OpenAPI Generation**: `from main import app` succeeded cleanly, confirming `131` OpenAPI paths and `135` operations.
-- **ESLint (`cd apps/web && npm run lint`)**: Reported `23` problems (`11` errors, `12` warnings)—specifically `react/no-unescaped-entities`, `@typescript-eslint/no-explicit-any`, and unused imports in `apps/web/src/app/finder/components/*`, `apps/web/src/services/geminiService.ts`, and `apps/web/src/types/index.ts`.
-- **Worker Pytest (`pytest tests/ -v --tb=short`)**: `1 passed, 14 failed`. `GET /health` returned `200`, while the 14 `/api/*` tests in `apps/worker/tests/test_health.py` returned `401 Unauthorized` because Phase 8 added global Bearer-token middleware (`inject_session_context`) to `/api/*` routes without updating the earlier unauthenticated test client calls.
-- **Scaffolds vs. Live Endpoints**: As documented in `docs/FEATURE_MATRIX.md`, `/api/autopilot/launch`, `/api/publish`, and `/api/alerts/dispatch/{org_id}` remain `scaffold` endpoints pending full end-to-end provider orchestration.
+- **ESLint (`cd apps/web && npm run lint`)**: Passed with `0` errors (`3` `@next/next/no-img-element` warnings retained intentionally for arbitrary external supplier image URLs).
+- **Next.js Production Build (`cd apps/web && npm run build`)**: Passed cleanly, generating `11/11` static pages across `/`, `/login`, `/finder`, `/os`, `/onboarding`, `/studio`, `/dashboard`, and `/oauth/callback`.
+- **Worker Import & OpenAPI Generation**: `from main import app` succeeded cleanly, confirming `131` OpenAPI paths and `135` operations (`docs/openapi.json` synced).
+- **Worker Pytest (`pytest tests/ -v --tb=short`)**: **18 passed, 0 failed**, covering `/health`, unauthenticated `401` enforcement, CORS `OPTIONS` preflight, `/api/auth/register` -> `login` -> `session` -> `logout` -> revoked `401` lifecycle, and all 14 authenticated `/api/*` endpoint checks. CI (`.github/workflows/ci.yml`) now enforces `npm run lint` and `pytest` strictly without `|| true`.
+- **Live Browser & Video Verification**: Verified `/` (landing), `/login`, `/finder`, `/os`, `/studio`, and `/dashboard` against the running Next.js + FastAPI worker in headless Chromium/Edge across desktop (`1440x900`) and mobile (`390x844`), capturing screenshots and an MP4/WebM/GIF walkthrough in `docs/screenshots/` and `docs/images/`.
 
 ---
 
-## 4. Next Steps
+## 4. Honest Engineering Gaps & Next Steps
 
-1. Update `apps/worker/tests/test_health.py` to register/login a test user and pass `Authorization: Bearer <token>` headers so the full pytest suite passes in CI without `|| true`.
-2. Resolve the 11 ESLint errors (`no-explicit-any` and `react/no-unescaped-entities`) in `apps/web/src/app/finder/` and `geminiService.ts`.
-3. Migrate `apps/worker/src/agents/copywriter.py` from deprecated `google-generativeai` to `google-genai`.
+1. **Worker Gemini SDK Migration**: `apps/worker/src/agents/copywriter.py` and `director.py` still import the deprecated `google-generativeai` package (`FutureWarning` during import); migrating them to `google-genai` (matching `apps/web`) will clear that warning.
+2. **Scaffold Endpoints**: As documented in `docs/FEATURE_MATRIX.md`, `/api/autopilot/launch`, `/api/publish`, and `/api/alerts/dispatch/{org_id}` remain `scaffold` endpoints pending full end-to-end provider orchestration.
+3. **Live Provider E2E Tests**: Current tests validate auth/session, CORS, and deterministic mock adapters without external paid API keys; staging E2E smoke tests with sandbox Shopify/Meta/Stripe credentials are the next production step.
